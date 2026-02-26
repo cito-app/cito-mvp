@@ -36,3 +36,40 @@ Ejemplo:
 
 users (1) → (*) availability
 Un negocio tiene múltiples horarios (uno por día)
+
+### appointments
+Citas agendadas por los pacientes
+
+Campos:
+- id (uuid)
+- user_id (uuid, FK → users)
+- paciente_nombre (text)
+- paciente_telefono (text)
+- fecha_hora (timestamptz)
+- motivo (text, nullable)
+- status (text: confirmada, cancelada, completada)
+- sms_enviado (bool)
+- sms_sid (text, nullable - ID de Twilio)
+- created_at (timestamp)
+
+Estados posibles:
+- confirmada: Cita activa
+- cancelada: Cancelada por paciente/negocio
+- completada: Cita ya ocurrió
+
+Ejemplo:
+- María González → Dental Ayala, 25-Feb-2026 10:00, Limpieza
+- Laura Sánchez → Spa Wellness, 25-Feb-2026 15:00, Masaje
+
+## Estadísticas de Prueba
+
+Total negocios: 3
+- Dental Ayala: 5 días laborales, 4 citas
+- Spa Wellness: 6 días laborales, 2 citas
+- Clínica Veterinaria: 0 días, 0 citas
+
+Total citas: 6
+- Confirmadas: 5
+- Canceladas: 1
+- Con SMS enviado: 4
+- Pendientes SMS: 2
