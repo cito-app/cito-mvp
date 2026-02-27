@@ -73,3 +73,49 @@ Total citas: 6
 - Canceladas: 1
 - Con SMS enviado: 4
 - Pendientes SMS: 2
+
+## Seguridad (Row Level Security)
+
+### RLS Habilitado en todas las tablas
+
+Todas las tablas tienen RLS activado para prevenir acceso no autorizado.
+
+### Políticas Implementadas
+
+#### users
+- ✅ Lectura pública (para homepage)
+- ✅ Solo dueño puede editar su perfil
+- ✅ Registro permitido para authenticated
+
+#### availability  
+- ✅ Lectura pública (para calendario)
+- ✅ Solo dueño puede crear/editar/borrar horarios
+
+#### appointments
+- ✅ Lectura para dueño del negocio (sus citas)
+- ✅ Lectura pública temporal (MVP)
+- ✅ Inserción pública (pacientes agendan)
+- ✅ Solo dueño puede actualizar/cancelar
+
+### auth.uid()
+
+Función de Supabase que devuelve el UUID del usuario autenticado.
+Se usa en todas las políticas para filtrar por usuario.
+
+Ejemplo:
+```sql
+USING (user_id = auth.uid())
+-- Solo devuelve filas donde user_id = usuario actual
+```
+
+### Testing
+
+Todas las políticas probadas con queries SQL.
+Actualización sin auth correctamente bloqueada.
+
+### Próximos Pasos (Post-MVP)
+
+- Limitar lectura de appointments solo a paciente/negocio
+- Agregar política para que pacientes vean solo sus citas (por teléfono)
+- Auditoría de accesos
+- Rate limiting
