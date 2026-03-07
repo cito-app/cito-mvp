@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🦷 Cito.mx - Tu Sitio de Citas
 
-## Getting Started
+Sistema de agendamiento de citas white-label para negocios mexicanos.
 
-First, run the development server:
+## 🎯 Propuesta de Valor
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Plataforma para controlar tus citas con página personalizada y confirmación automática por SMS. Desde $300/mes.
+
+## 📊 Estado del Proyecto
+
+**Fase actual:** Base de Datos Completa (Semana 2/14)
+
+**Progreso:** 15/128 horas (11.7%)
+
+**Inversión:** $690.27 MXN
+
+## 🏗️ Stack Tecnológico
+
+- **Frontend:** Next.js 14 + TypeScript + Tailwind CSS
+- **Backend:** Supabase (PostgreSQL + Auth + Storage)
+- **Pagos:** Stripe
+- **SMS:** Twilio
+- **Hosting:** Siteground
+
+## 📂 Estructura del Proyecto
+```
+cito-mvp/
+├── app/                    # Next.js pages
+├── components/             # Componentes reutilizables
+├── lib/                    # Utilidades (supabase client)
+├── docs/                   # Documentación
+│   ├── database/          # Esquemas y queries
+│   ├── api/               # Documentación API
+│   └── setup/             # Guías de instalación
+├── public/                # Archivos estáticos
+└── .env.local            # Variables de entorno
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🗄️ Base de Datos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Tablas Principales
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **users** - Negocios registrados
+- **availability** - Horarios de atención
+- **appointments** - Citas agendadas
 
-## Learn More
+Ver documentación completa: [docs/database/schema.md](docs/database/schema.md)
 
-To learn more about Next.js, take a look at the following resources:
+## 🚀 Próximos Pasos
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Semana 3:** Sistema de registro y login
+**Semana 4:** Dashboard y perfil
+**Semana 5-6:** Personalización white-label
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📝 Documentación
 
-## Deploy on Vercel
+- [Database Schema](docs/database/schema.md)
+- [Queries Útiles](docs/database/queries.md)
+- [Setup Local](docs/setup/local-dev.md)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 💰 Modelo de Negocio
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+**Plan Básico:** $300 MXN/mes
+- 40 SMS incluidos
+- Página personalizada
+- Citas ilimitadas
+
+**Plan Premium:** $600 MXN/mes (Fase 2)
+- 100 SMS incluidos
+- Dominio personalizado
+- Recordatorios múltiples
+
+## 📧 Contacto
+
+Proyecto: Cito.mx - Tu Sitio de Citas
