@@ -41,5 +41,4 @@ export default function Home() {
 
     fetchBusinesses()
   }, [])
-
   // ... resto del código igual
