@@ -119,3 +119,29 @@ Actualización sin auth correctamente bloqueada.
 - Agregar política para que pacientes vean solo sus citas (por teléfono)
 - Auditoría de accesos
 - Rate limiting
+
+
+
+## Datos de Prueba Actualizados (5 Mar 2026)
+
+### Estadísticas
+
+**Negocios:** 3
+- Dental Ayala: 5 días laborales, 7 citas
+- Spa Wellness: 6 días laborales, 7 citas  
+- Clínica Veterinaria: 5 días laborales, 2 citas
+
+**Total citas:** 16
+- Confirmadas: 14 (87.5%)
+- Canceladas: 1 (6.25%)
+- Completadas: 1 (6.25%)
+
+**SMS:**
+- Enviados: 8 citas
+- Pendientes: 8 citas
+
+**Distribución temporal:**
+- Pasadas (completadas): 1
+- Hoy: 3
+- Mañana: 3
+- Próxima semana: 9
