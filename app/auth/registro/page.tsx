@@ -1,17 +1,25 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function RegistroPage() {
+  const router = useRouter()
+  
   // Estados para cada campo
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [nombreNegocio, setNombreNegocio] = useState('')
   const [industry, setIndustry] = useState('')
   const [subdominio, setSubdominio] = useState('')
-  const [subdominioManual, setSubdominioManual] = useState(false) // Control manual
+  const [subdominioManual, setSubdominioManual] = useState(false)
   const [terminos, setTerminos] = useState(false)
+
+  // Estados de UI
+  const [loading, setLoading] = useState(false)
+  const [subdominioChecking, setSubdominioChecking] = useState(false)
+  const [subdominioDisponible, setSubdominioDisponible] = useState<boolean | null>(null)
 
   // Estados para errores
   const [errors, setErrors] = useState({
@@ -20,18 +28,14 @@ export default function RegistroPage() {
     nombreNegocio: '',
     industry: '',
     subdominio: '',
-    terminos: ''
+    terminos: '',
+    general: ''
   })
-
-  // Estado para validación de unicidad de subdominio
-  const [subdominioChecking, setSubdominioChecking] = useState(false)
-  const [subdominioDisponible, setSubdominioDisponible] = useState<boolean | null>(null)
 
   // Función para generar subdominio desde nombre
   const generarSubdominio = (nombre: string): string => {
     let resultado = nombre.toLowerCase()
     
-    // Reemplazar acentos
     const acentos: { [key: string]: string } = {
       'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
       'ü': 'u', 'ñ': 'n',
@@ -43,13 +47,12 @@ export default function RegistroPage() {
       resultado = resultado.replace(new RegExp(acento, 'g'), reemplazo)
     }
     
-    // Quitar todo lo que no sea letra o número
     resultado = resultado.replace(/[^a-z0-9]/g, '')
     
     return resultado
   }
 
-  // Auto-generar subdominio cuando cambia el nombre del negocio
+  // Auto-generar subdominio
   useEffect(() => {
     if (!subdominioManual && nombreNegocio) {
       const nuevoSubdominio = generarSubdominio(nombreNegocio)
@@ -57,7 +60,7 @@ export default function RegistroPage() {
     }
   }, [nombreNegocio, subdominioManual])
 
-  // Verificar disponibilidad de subdominio en Supabase
+  // Verificar disponibilidad de subdominio
   useEffect(() => {
     const verificarDisponibilidad = async () => {
       if (!subdominio || subdominio.length < 3) {
@@ -78,7 +81,6 @@ export default function RegistroPage() {
           console.error('Error checking subdomain:', error)
           setSubdominioDisponible(null)
         } else {
-          // Si data es null, el subdominio está disponible
           setSubdominioDisponible(data === null)
         }
       } catch (err) {
@@ -89,7 +91,6 @@ export default function RegistroPage() {
       }
     }
 
-    // Debounce: esperar 500ms después de que el usuario deje de escribir
     const timer = setTimeout(verificarDisponibilidad, 500)
     return () => clearTimeout(timer)
   }, [subdominio])
@@ -129,9 +130,12 @@ export default function RegistroPage() {
     return ''
   }
 
-  // Manejar submit
+  // Manejar submit - INTEGRACIÓN CON SUPABASE
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Limpiar error general
+    setErrors(prev => ({ ...prev, general: '' }))
 
     // Validar todos los campos
     const emailError = validateEmail(email)
@@ -148,12 +152,12 @@ export default function RegistroPage() {
       nombreNegocio: nombreError,
       industry: industryError,
       subdominio: subdominioError,
-      terminos: terminosError
+      terminos: terminosError,
+      general: ''
     })
 
     // Si hay errores, no continuar
     if (emailError || passwordError || nombreError || industryError || subdominioError || terminosError) {
-      console.log('❌ Formulario tiene errores')
       return
     }
 
@@ -163,36 +167,99 @@ export default function RegistroPage() {
       return
     }
 
-    // Si todo está bien
-    console.log('✅ Formulario válido!')
-    console.log({
-      email,
-      password,
-      nombreNegocio,
-      industry,
-      subdominio: `${subdominio}.cito.mx`,
-      terminos
-    })
+    setLoading(true)
 
-    // Mañana conectaremos con Supabase Auth + DB
-    alert(`✅ Formulario válido!\n\nTu página será: ${subdominio}.cito.mx\n\nMañana lo conectaremos a la base de datos.`)
+    try {
+      // PASO 1: Crear usuario en Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: email,
+        password: password,
+        options: {
+          data: {
+            nombre_negocio: nombreNegocio,
+            subdominio: subdominio,
+            industry: industry
+          }
+        }
+      })
+
+      if (authError) {
+        console.error('Auth error:', authError)
+        
+        // Manejar errores específicos
+        if (authError.message.includes('already registered')) {
+          setErrors(prev => ({ ...prev, email: 'Este email ya está registrado' }))
+        } else {
+          setErrors(prev => ({ ...prev, general: authError.message }))
+        }
+        setLoading(false)
+        return
+      }
+
+      if (!authData.user) {
+        setErrors(prev => ({ ...prev, general: 'Error al crear la cuenta' }))
+        setLoading(false)
+        return
+      }
+
+      // PASO 2: Insertar en tabla users
+      const { error: dbError } = await supabase
+        .from('users')
+        .insert({
+          id: authData.user.id, // Usar el ID de Auth
+          email: email,
+          nombre_negocio: nombreNegocio,
+          subdominio: subdominio,
+          industry: industry,
+          color_primario: '#3B82F6' // Color por defecto
+        })
+
+      if (dbError) {
+        console.error('Database error:', dbError)
+        
+        // Si falla la inserción en users, intentar eliminar el usuario de Auth
+        // (esto es opcional, pero mantiene consistencia)
+        await supabase.auth.admin.deleteUser(authData.user.id)
+        
+        if (dbError.message.includes('duplicate')) {
+          setErrors(prev => ({ ...prev, general: 'Este email o subdominio ya existe' }))
+        } else {
+          setErrors(prev => ({ ...prev, general: 'Error al crear el negocio. Intenta de nuevo.' }))
+        }
+        setLoading(false)
+        return
+      }
+
+      // PASO 3: Éxito - Redirect a página de bienvenida
+      console.log('✅ Usuario creado exitosamente!')
+      console.log('User ID:', authData.user.id)
+      console.log('Email:', email)
+      console.log('Subdominio:', `${subdominio}.cito.mx`)
+      
+      // Redirect a página de bienvenida
+      router.push('/auth/bienvenida')
+
+    } catch (error: any) {
+      console.error('Unexpected error:', error)
+      setErrors(prev => ({ ...prev, general: 'Error inesperado. Intenta de nuevo.' }))
+      setLoading(false)
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <a href="/" className="inline-flex items-center gap-3 hover:opacity-80 transition">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center">
-                <span className="text-white text-xl font-black">C</span>
-              </div>
-              <span className="text-2xl font-bold text-gray-900">Cito.mx</span>
-            </div>
-          </a>
-        </div>
-      </header>
+<header className="bg-white border-b border-gray-200">
+  <div className="max-w-7xl mx-auto px-4 py-4">
+    <a href="/" className="inline-flex items-center hover:opacity-80 transition">
+      <img 
+        src="/logos/cito-logo-h.jpg" 
+        alt="Cito.mx" 
+        className="h-10"
+      />
+    </a>
+  </div>
+</header>
 
       {/* Main Content */}
       <main className="flex-1 flex items-center justify-center px-4 py-8 sm:py-12">
@@ -207,6 +274,13 @@ export default function RegistroPage() {
               Comienza tu prueba gratis de 7 días
             </p>
           </div>
+
+          {/* Error General */}
+          {errors.general && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">{errors.general}</p>
+            </div>
+          )}
 
           {/* Form Card */}
           <div className="bg-white p-6 sm:p-8 rounded-xl border border-gray-200 shadow-sm">
@@ -225,8 +299,9 @@ export default function RegistroPage() {
                     setEmail(e.target.value)
                     setErrors(prev => ({ ...prev, email: validateEmail(e.target.value) }))
                   }}
+                  disabled={loading}
                   placeholder="tu@ejemplo.com"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed ${
                     errors.email ? 'border-red-500' : 'border-gray-200 focus:border-blue-500'
                   }`}
                 />
@@ -248,8 +323,9 @@ export default function RegistroPage() {
                     setPassword(e.target.value)
                     setErrors(prev => ({ ...prev, password: validatePassword(e.target.value) }))
                   }}
+                  disabled={loading}
                   placeholder="Mínimo 8 caracteres"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed ${
                     errors.password ? 'border-red-500' : 'border-gray-200 focus:border-blue-500'
                   }`}
                 />
@@ -281,8 +357,9 @@ export default function RegistroPage() {
                     setNombreNegocio(e.target.value)
                     setErrors(prev => ({ ...prev, nombreNegocio: validateNombreNegocio(e.target.value) }))
                   }}
+                  disabled={loading}
                   placeholder="Ej: Dental Ayala"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition ${
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed ${
                     errors.nombreNegocio ? 'border-red-500' : 'border-gray-200 focus:border-blue-500'
                   }`}
                 />
@@ -303,7 +380,8 @@ export default function RegistroPage() {
                     setIndustry(e.target.value)
                     setErrors(prev => ({ ...prev, industry: validateIndustry(e.target.value) }))
                   }}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition bg-white ${
+                  disabled={loading}
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition bg-white disabled:bg-gray-50 disabled:cursor-not-allowed ${
                     errors.industry ? 'border-red-500' : 'border-gray-200 focus:border-blue-500'
                   }`}
                 >
@@ -322,7 +400,7 @@ export default function RegistroPage() {
                 )}
               </div>
 
-              {/* Subdominio con Auto-generación */}
+              {/* Subdominio */}
               <div>
                 <label htmlFor="subdominio" className="block text-sm font-medium text-gray-700 mb-2">
                   Tu página será:
@@ -335,19 +413,19 @@ export default function RegistroPage() {
                     onChange={(e) => {
                       const value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '')
                       setSubdominio(value)
-                      setSubdominioManual(true) // Usuario editó manualmente
+                      setSubdominioManual(true)
                       setErrors(prev => ({ ...prev, subdominio: validateSubdominio(value) }))
                     }}
-                    onFocus={() => setSubdominioManual(true)} // Marcar como manual al hacer focus
+                    onFocus={() => setSubdominioManual(true)}
+                    disabled={loading}
                     placeholder="dentalayala"
-                    className={`flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition ${
+                    className={`flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed ${
                       errors.subdominio ? 'border-red-500' : 'border-gray-200 focus:border-blue-500'
                     }`}
                   />
                   <span className="text-gray-500 font-medium">.cito.mx</span>
                 </div>
                 
-                {/* Mensajes de validación de subdominio */}
                 {errors.subdominio && (
                   <p className="text-sm text-red-500 mt-1">{errors.subdominio}</p>
                 )}
@@ -389,7 +467,8 @@ export default function RegistroPage() {
                       setTerminos(e.target.checked)
                       setErrors(prev => ({ ...prev, terminos: '' }))
                     }}
-                    className="mt-1 w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-2 focus:ring-blue-500/20"
+                    disabled={loading}
+                    className="mt-1 w-4 h-4 text-blue-500 border-gray-300 rounded focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed"
                   />
                   <label htmlFor="terminos" className="text-sm text-gray-600">
                     Acepto los{' '}
@@ -410,10 +489,17 @@ export default function RegistroPage() {
               {/* Botón Submit */}
               <button
                 type="submit"
-                disabled={subdominioChecking}
-                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition"
+                disabled={loading || subdominioChecking}
+                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition flex items-center justify-center gap-2"
               >
-                {subdominioChecking ? 'Verificando...' : 'Crear mi cuenta'}
+                {loading ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Creando cuenta...
+                  </>
+                ) : (
+                  'Crear mi cuenta'
+                )}
               </button>
 
               {/* Link a Login */}
