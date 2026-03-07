@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
 
 export default function RegistroPage() {
   // Estados para cada campo
@@ -9,6 +10,7 @@ export default function RegistroPage() {
   const [nombreNegocio, setNombreNegocio] = useState('')
   const [industry, setIndustry] = useState('')
   const [subdominio, setSubdominio] = useState('')
+  const [subdominioManual, setSubdominioManual] = useState(false) // Control manual
   const [terminos, setTerminos] = useState(false)
 
   // Estados para errores
@@ -20,6 +22,77 @@ export default function RegistroPage() {
     subdominio: '',
     terminos: ''
   })
+
+  // Estado para validación de unicidad de subdominio
+  const [subdominioChecking, setSubdominioChecking] = useState(false)
+  const [subdominioDisponible, setSubdominioDisponible] = useState<boolean | null>(null)
+
+  // Función para generar subdominio desde nombre
+  const generarSubdominio = (nombre: string): string => {
+    let resultado = nombre.toLowerCase()
+    
+    // Reemplazar acentos
+    const acentos: { [key: string]: string } = {
+      'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+      'ü': 'u', 'ñ': 'n',
+      'Á': 'a', 'É': 'e', 'Í': 'i', 'Ó': 'o', 'Ú': 'u',
+      'Ü': 'u', 'Ñ': 'n'
+    }
+    
+    for (const [acento, reemplazo] of Object.entries(acentos)) {
+      resultado = resultado.replace(new RegExp(acento, 'g'), reemplazo)
+    }
+    
+    // Quitar todo lo que no sea letra o número
+    resultado = resultado.replace(/[^a-z0-9]/g, '')
+    
+    return resultado
+  }
+
+  // Auto-generar subdominio cuando cambia el nombre del negocio
+  useEffect(() => {
+    if (!subdominioManual && nombreNegocio) {
+      const nuevoSubdominio = generarSubdominio(nombreNegocio)
+      setSubdominio(nuevoSubdominio)
+    }
+  }, [nombreNegocio, subdominioManual])
+
+  // Verificar disponibilidad de subdominio en Supabase
+  useEffect(() => {
+    const verificarDisponibilidad = async () => {
+      if (!subdominio || subdominio.length < 3) {
+        setSubdominioDisponible(null)
+        return
+      }
+
+      setSubdominioChecking(true)
+
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('subdominio')
+          .eq('subdominio', subdominio)
+          .maybeSingle()
+
+        if (error) {
+          console.error('Error checking subdomain:', error)
+          setSubdominioDisponible(null)
+        } else {
+          // Si data es null, el subdominio está disponible
+          setSubdominioDisponible(data === null)
+        }
+      } catch (err) {
+        console.error('Error:', err)
+        setSubdominioDisponible(null)
+      } finally {
+        setSubdominioChecking(false)
+      }
+    }
+
+    // Debounce: esperar 500ms después de que el usuario deje de escribir
+    const timer = setTimeout(verificarDisponibilidad, 500)
+    return () => clearTimeout(timer)
+  }, [subdominio])
 
   // Funciones de validación
   const validateEmail = (email: string) => {
@@ -50,13 +123,14 @@ export default function RegistroPage() {
 
   const validateSubdominio = (subdominio: string) => {
     if (!subdominio) return 'El subdominio es requerido'
-    if (!/^[a-z0-9]+$/.test(subdominio)) return 'Solo letras minúsculas y números, sin espacios'
+    if (!/^[a-z0-9]+$/.test(subdominio)) return 'Solo letras minúsculas y números'
     if (subdominio.length < 3) return 'Mínimo 3 caracteres'
+    if (subdominioDisponible === false) return 'Este subdominio ya está en uso'
     return ''
   }
 
   // Manejar submit
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Validar todos los campos
@@ -83,6 +157,12 @@ export default function RegistroPage() {
       return
     }
 
+    // Verificar disponibilidad una última vez
+    if (subdominioDisponible !== true) {
+      setErrors(prev => ({ ...prev, subdominio: 'Verifica la disponibilidad del subdominio' }))
+      return
+    }
+
     // Si todo está bien
     console.log('✅ Formulario válido!')
     console.log({
@@ -90,12 +170,12 @@ export default function RegistroPage() {
       password,
       nombreNegocio,
       industry,
-      subdominio,
+      subdominio: `${subdominio}.cito.mx`,
       terminos
     })
 
-    // Aquí mañana conectaremos con Supabase
-    alert('✅ Formulario válido! Mañana lo conectaremos a la base de datos.')
+    // Mañana conectaremos con Supabase Auth + DB
+    alert(`✅ Formulario válido!\n\nTu página será: ${subdominio}.cito.mx\n\nMañana lo conectaremos a la base de datos.`)
   }
 
   return (
@@ -242,7 +322,7 @@ export default function RegistroPage() {
                 )}
               </div>
 
-              {/* Subdominio */}
+              {/* Subdominio con Auto-generación */}
               <div>
                 <label htmlFor="subdominio" className="block text-sm font-medium text-gray-700 mb-2">
                   Tu página será:
@@ -255,8 +335,10 @@ export default function RegistroPage() {
                     onChange={(e) => {
                       const value = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '')
                       setSubdominio(value)
+                      setSubdominioManual(true) // Usuario editó manualmente
                       setErrors(prev => ({ ...prev, subdominio: validateSubdominio(value) }))
                     }}
+                    onFocus={() => setSubdominioManual(true)} // Marcar como manual al hacer focus
                     placeholder="dentalayala"
                     className={`flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none transition ${
                       errors.subdominio ? 'border-red-500' : 'border-gray-200 focus:border-blue-500'
@@ -264,17 +346,34 @@ export default function RegistroPage() {
                   />
                   <span className="text-gray-500 font-medium">.cito.mx</span>
                 </div>
+                
+                {/* Mensajes de validación de subdominio */}
                 {errors.subdominio && (
                   <p className="text-sm text-red-500 mt-1">{errors.subdominio}</p>
                 )}
-                {!errors.subdominio && subdominio && (
+                
+                {!errors.subdominio && subdominio && subdominioChecking && (
+                  <p className="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                    <span className="inline-block w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
+                    Verificando disponibilidad...
+                  </p>
+                )}
+                
+                {!errors.subdominio && subdominio && !subdominioChecking && subdominioDisponible === true && (
                   <p className="text-xs text-green-600 mt-1">
                     ✓ {subdominio}.cito.mx está disponible
                   </p>
                 )}
+                
+                {!errors.subdominio && subdominio && !subdominioChecking && subdominioDisponible === false && (
+                  <p className="text-xs text-red-500 mt-1">
+                    ✗ {subdominio}.cito.mx ya está en uso
+                  </p>
+                )}
+                
                 {!subdominio && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Solo letras minúsculas y números, sin espacios
+                    Se genera automáticamente desde el nombre del negocio
                   </p>
                 )}
               </div>
@@ -311,9 +410,10 @@ export default function RegistroPage() {
               {/* Botón Submit */}
               <button
                 type="submit"
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition"
+                disabled={subdominioChecking}
+                className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold px-6 py-3 rounded-lg shadow-sm hover:shadow-md transition"
               >
-                Crear mi cuenta
+                {subdominioChecking ? 'Verificando...' : 'Crear mi cuenta'}
               </button>
 
               {/* Link a Login */}
