@@ -50,3 +50,29 @@ Todos los cambios notables en este proyecto serán documentados aquí.
 **Semana 4** (9-15 Mar): Login y dashboard
 **Semana 8** (6-12 Abr): Decisión crítica GO/NO-GO
 **Semana 14** (25-31 May): MVP en producción
+
+## [Semana 3] - 2-8 Marzo 2026
+
+### ✨ Nuevo
+- Sistema de registro completo
+- Auto-generación de subdominios
+- Verificación de unicidad en tiempo real
+- Validaciones de formulario
+- Integración con Supabase Auth
+- Página de bienvenida
+- 5 usuarios de prueba creados
+
+### 🔧 Técnico
+- RLS policies configuradas
+- Email confirmation deshabilitado para desarrollo
+- Loading states implementados
+- Error handling completo
+
+### 📊 Progreso
+- Horas completadas: 24/128 (18.8%)
+- Features completos: 1 (Registro)
+- Tests pasados: 18/18
+
+### 🎯 Próximos Pasos
+- Semana 4: Sistema de Login
+- Dashboard básico

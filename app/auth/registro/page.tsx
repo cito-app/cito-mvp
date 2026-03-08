@@ -214,21 +214,17 @@ export default function RegistroPage() {
           color_primario: '#3B82F6' // Color por defecto
         })
 
-      if (dbError) {
+    if (dbError) {
         console.error('Database error:', dbError)
-        
-        // Si falla la inserción en users, intentar eliminar el usuario de Auth
-        // (esto es opcional, pero mantiene consistencia)
-        await supabase.auth.admin.deleteUser(authData.user.id)
-        
-        if (dbError.message.includes('duplicate')) {
-          setErrors(prev => ({ ...prev, general: 'Este email o subdominio ya existe' }))
-        } else {
-          setErrors(prev => ({ ...prev, general: 'Error al crear el negocio. Intenta de nuevo.' }))
-        }
-        setLoading(false)
-        return
-      }
+  
+    if (dbError.message.includes('duplicate')) {
+        setErrors(prev => ({ ...prev, general: 'Este email o subdominio ya existe' }))
+    } else {
+        setErrors(prev => ({ ...prev, general: `Error al crear el negocio: ${dbError.message}` }))
+    }
+    setLoading(false)
+    return
+    }
 
       // PASO 3: Éxito - Redirect a página de bienvenida
       console.log('✅ Usuario creado exitosamente!')
