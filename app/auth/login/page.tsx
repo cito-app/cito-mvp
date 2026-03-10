@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -16,23 +17,56 @@ export default function LoginPage() {
     e.preventDefault()
     
     setError('')
-    setLoading(true)
-
+    
     // Validaciones básicas
     if (!email || !password) {
       setError('Por favor completa todos los campos')
-      setLoading(false)
       return
     }
 
-    // TODO: Mañana integraremos con Supabase
-    console.log('Login attempt:', { email, password })
-    
-    // Simulación por hoy
-    setTimeout(() => {
+    setLoading(true)
+
+    try {
+      // PASO 1: Intentar login con Supabase
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      })
+
+      if (authError) {
+        console.error('Auth error:', authError)
+        
+        // Manejar errores específicos
+        if (authError.message.includes('Invalid login credentials')) {
+          setError('Email o contraseña incorrectos')
+        } else if (authError.message.includes('Email not confirmed')) {
+          setError('Por favor confirma tu email primero')
+        } else {
+          setError(authError.message)
+        }
+        setLoading(false)
+        return
+      }
+
+      if (!data.user) {
+        setError('Error al iniciar sesión')
+        setLoading(false)
+        return
+      }
+
+      // PASO 2: Login exitoso
+      console.log('✅ Login exitoso!')
+      console.log('User ID:', data.user.id)
+      console.log('Email:', data.user.email)
+      
+      // PASO 3: Redirect al dashboard
+      router.push('/dashboard')
+
+    } catch (error: any) {
+      console.error('Unexpected error:', error)
+      setError('Error inesperado. Intenta de nuevo.')
       setLoading(false)
-      alert('Mañana conectaremos con Supabase Auth')
-    }, 1000)
+    }
   }
 
   return (
@@ -42,7 +76,7 @@ export default function LoginPage() {
         <div className="max-w-7xl mx-auto px-4 py-4">
           <Link href="/" className="inline-flex items-center hover:opacity-80 transition">
             <img 
-              src="/logos/cito-logo-h.jpg" 
+              src="/logos/cito-logo-h.png" 
               alt="Cito.mx" 
               className="h-10"
             />
@@ -87,6 +121,7 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   disabled={loading}
                   placeholder="tu@ejemplo.com"
+                  autoComplete="email"
                   className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -111,6 +146,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
                 />
               </div>
@@ -164,4 +200,3 @@ export default function LoginPage() {
     </div>
   )
 }
-
