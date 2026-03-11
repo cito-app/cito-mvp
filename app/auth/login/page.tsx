@@ -59,8 +59,11 @@ export default function LoginPage() {
       console.log('User ID:', data.user.id)
       console.log('Email:', data.user.email)
       
-      // PASO 3: Redirect al dashboard
-      router.push('/dashboard')
+      // PASO 3: Redirect al dashboard o a donde venía
+      const searchParams = new URLSearchParams(window.location.search)
+      const redirect = searchParams.get('redirect') || '/dashboard'
+      router.push(redirect)
+      router.refresh() // Forzar refresh para que middleware actualice
 
     } catch (error: any) {
       console.error('Unexpected error:', error)
