@@ -136,12 +136,23 @@ export default function DashboardPage() {
               </button>
 
               {/* Dropdown Menu */}
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
-                  <div className="px-4 py-3 border-b border-gray-100">
-                    <p className="text-sm font-medium text-gray-900">{session.user.email}</p>
-                    <p className="text-xs text-gray-500 mt-1">{userData?.industry}</p>
-                  </div>
+          {showUserMenu && (
+          <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <p className="text-sm font-medium text-gray-900">{session.user.email}</p>
+            {userData?.industry && (
+            <p className="text-xs text-gray-500 mt-1 capitalize">
+                {userData.industry === 'dentista' && '🦷 Dentista'}
+                {userData.industry === 'spa' && '💆 Spa / Estética'}
+                {userData.industry === 'veterinaria' && '🐕 Veterinaria'}
+                {userData.industry === 'gym' && '💪 Gimnasio'}
+                {userData.industry === 'medico' && '⚕️ Consultorio Médico'}
+                {userData.industry === 'salon' && '💇 Salón de Belleza'}
+                {userData.industry === 'psicologo' && '🧠 Psicología'}
+                {userData.industry === 'otro' && '📋 Otro'}
+              </p>
+           )}
+          </div>
                   
                   <Link
                     href="/dashboard/perfil"
