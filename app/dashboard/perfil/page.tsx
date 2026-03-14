@@ -10,6 +10,14 @@ export default function PerfilPage() {
   const [session, setSession] = useState<any>(null)
   const [userData, setUserData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  
+  // Estados de edición
+  const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [nombreNegocio, setNombreNegocio] = useState('')
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
 
   useEffect(() => {
     const getSession = async () => {
@@ -31,6 +39,8 @@ export default function PerfilPage() {
 
       if (!userError && user) {
         setUserData(user)
+        setNombreNegocio(user.nombre_negocio || '')
+        setEmail(data.session.user.email || '')
       }
 
       setLoading(false)
@@ -38,6 +48,81 @@ export default function PerfilPage() {
 
     getSession()
   }, [router])
+
+  const handleEdit = () => {
+    setIsEditing(true)
+    setError('')
+    setSuccess('')
+  }
+
+  const handleCancel = () => {
+    setIsEditing(false)
+    setNombreNegocio(userData.nombre_negocio || '')
+    setEmail(session.user.email || '')
+    setError('')
+    setSuccess('')
+  }
+
+  const handleSave = async () => {
+    setError('')
+    setSuccess('')
+
+    // Validaciones
+    if (!nombreNegocio || nombreNegocio.trim().length < 3) {
+      setError('El nombre del negocio debe tener al menos 3 caracteres')
+      return
+    }
+
+    if (!email || !email.includes('@')) {
+      setError('Email inválido')
+      return
+    }
+
+    setSaving(true)
+
+    try {
+      // Actualizar nombre del negocio en tabla users
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ nombre_negocio: nombreNegocio.trim() })
+        .eq('id', session.user.id)
+
+      if (updateError) {
+        console.error('Error updating user:', updateError)
+        setError('Error al guardar. Intenta de nuevo.')
+        setSaving(false)
+        return
+      }
+
+      // Si el email cambió, actualizar en Auth
+      if (email !== session.user.email) {
+        const { error: emailError } = await supabase.auth.updateUser({
+          email: email
+        })
+
+        if (emailError) {
+          console.error('Error updating email:', emailError)
+          setError('Error al actualizar el email. Intenta de nuevo.')
+          setSaving(false)
+          return
+        }
+      }
+
+      // Actualizar estado local
+      setUserData({ ...userData, nombre_negocio: nombreNegocio.trim() })
+      setSuccess('✅ Cambios guardados exitosamente')
+      setIsEditing(false)
+      setSaving(false)
+
+      // Limpiar mensaje de éxito después de 3 segundos
+      setTimeout(() => setSuccess(''), 3000)
+
+    } catch (error: any) {
+      console.error('Unexpected error:', error)
+      setError('Error inesperado. Intenta de nuevo.')
+      setSaving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -54,7 +139,7 @@ export default function PerfilPage() {
     return null
   }
 
-  // Mapeo de industries a nombres legibles
+  // Mapeo de industries
   const industryNames: { [key: string]: string } = {
     'dentista': '🦷 Dentista / Odontología',
     'spa': '💆 Spa / Estética',
@@ -68,7 +153,7 @@ export default function PerfilPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar Simple */}
+      {/* Navbar */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <Link href="/dashboard" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
@@ -83,15 +168,42 @@ export default function PerfilPage() {
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 py-8">
         
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Mi Perfil
-          </h1>
-          <p className="text-gray-600">
-            Información de tu negocio y cuenta
-          </p>
+        {/* Header con botón editar */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+              Mi Perfil
+            </h1>
+            <p className="text-gray-600">
+              Información de tu negocio y cuenta
+            </p>
+          </div>
+          
+          {!isEditing && (
+            <button
+              onClick={handleEdit}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-lg transition flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Editar Perfil
+            </button>
+          )}
         </div>
+
+        {/* Mensajes */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600">{error}</p>
+          </div>
+        )}
+
+        {success && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-600">{success}</p>
+          </div>
+        )}
 
         {/* Información del Negocio */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
@@ -108,14 +220,25 @@ export default function PerfilPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Nombre del Negocio
               </label>
-              <div className="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
-                <p className="text-gray-900 font-medium">
-                  {userData.nombre_negocio || 'Sin nombre'}
-                </p>
-              </div>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={nombreNegocio}
+                  onChange={(e) => setNombreNegocio(e.target.value)}
+                  disabled={saving}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  placeholder="Ej: Dental Ayala"
+                />
+              ) : (
+                <div className="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
+                  <p className="text-gray-900 font-medium">
+                    {userData.nombre_negocio || 'Sin nombre'}
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* Tipo de Negocio */}
+            {/* Tipo de Negocio (No editable) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tipo de Negocio
@@ -125,9 +248,12 @@ export default function PerfilPage() {
                   {industryNames[userData.industry] || userData.industry}
                 </p>
               </div>
+              <p className="text-xs text-gray-500 mt-1">
+                💡 El tipo de negocio no se puede cambiar después del registro
+              </p>
             </div>
 
-            {/* Subdominio */}
+            {/* Subdominio (No editable) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tu Página Pública
@@ -137,8 +263,8 @@ export default function PerfilPage() {
                   {userData.subdominio}.cito.mx
                 </p>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                💡 Este será el enlace que compartirás con tus clientes
+              <p className="text-xs text-gray-500 mt-1">
+                💡 El subdominio no se puede cambiar después del registro
               </p>
             </div>
 
@@ -160,29 +286,83 @@ export default function PerfilPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email
               </label>
-              <div className="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
-                <p className="text-gray-900">
-                  {session.user.email}
-                </p>
-              </div>
+              {isEditing ? (
+                <>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    disabled={saving}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                    placeholder="tu@ejemplo.com"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    ⚠️ Si cambias tu email, necesitarás confirmarlo
+                  </p>
+                </>
+              ) : (
+                <div className="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
+                  <p className="text-gray-900">
+                    {session.user.email}
+                  </p>
+                </div>
+              )}
             </div>
 
-            {/* Contraseña */}
+            {/* Contraseña (Link a cambiar) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Contraseña
               </label>
-              <div className="bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between bg-gray-50 px-4 py-3 rounded-lg border border-gray-200">
                 <p className="text-gray-900">
                   ••••••••
                 </p>
+                {!isEditing && (
+                  <button className="text-sm text-blue-500 hover:text-blue-600 font-medium">
+                    Cambiar contraseña
+                  </button>
+                )}
               </div>
             </div>
 
           </div>
         </div>
 
-        {/* Personalización */}
+        {/* Botones de acción */}
+        {isEditing && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg shadow-sm hover:shadow-md transition flex items-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Guardar Cambios
+                </>
+              )}
+            </button>
+            
+            <button
+              onClick={handleCancel}
+              disabled={saving}
+              className="px-6 py-3 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 font-medium rounded-lg border border-gray-200 transition"
+            >
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        {/* Personalización (sin editar aún) */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900">
@@ -192,7 +372,6 @@ export default function PerfilPage() {
           
           <div className="p-6 space-y-6">
             
-            {/* Logo */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Logo del Negocio
@@ -211,15 +390,13 @@ export default function PerfilPage() {
                     </svg>
                   )}
                 </div>
-                {!userData.logo_url && (
-                  <p className="text-sm text-gray-500">
-                    Sin logo cargado
-                  </p>
-                )}
+                <div>
+                  <p className="text-sm text-gray-500">Sin logo cargado</p>
+                  <p className="text-xs text-gray-400 mt-1">Próximamente: Subir logo</p>
+                </div>
               </div>
             </div>
 
-            {/* Color Primario */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Color de Marca
@@ -233,35 +410,12 @@ export default function PerfilPage() {
                   <p className="text-gray-900 font-mono text-sm">
                     {userData.color_primario || '#3B82F6'}
                   </p>
-                  <p className="text-xs text-gray-500">
-                    Color que se usará en tu página pública
-                  </p>
+                  <p className="text-xs text-gray-400">Próximamente: Cambiar color</p>
                 </div>
               </div>
             </div>
 
           </div>
-        </div>
-
-        {/* Metadata */}
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <details className="cursor-pointer">
-            <summary className="text-sm font-medium text-blue-900 mb-2">
-              🔧 Información técnica
-            </summary>
-            <div className="mt-3 space-y-2 text-xs text-blue-800">
-              <p><span className="font-medium">User ID:</span> {userData.id}</p>
-              <p><span className="font-medium">Creado:</span> {new Date(userData.created_at).toLocaleDateString('es-MX')}</p>
-              <p><span className="font-medium">Email verificado:</span> {session.user.email_confirmed_at ? 'Sí' : 'No'}</p>
-            </div>
-          </details>
-        </div>
-
-        {/* Placeholder para botón editar (próxima semana) */}
-        <div className="mt-8 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-          <p className="text-sm text-yellow-800">
-            📝 <span className="font-medium">Próximamente:</span> Podrás editar toda esta información desde esta misma página.
-          </p>
         </div>
 
       </main>
