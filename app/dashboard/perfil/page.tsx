@@ -19,6 +19,15 @@ export default function PerfilPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
+  // Estados de cambio de contraseña
+  const [showPasswordModal, setShowPasswordModal] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [passwordSuccess, setPasswordSuccess] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
+
   useEffect(() => {
     const getSession = async () => {
       const { data, error } = await supabase.auth.getSession()
@@ -30,7 +39,6 @@ export default function PerfilPage() {
 
       setSession(data.session)
 
-      // Obtener datos del usuario
       const { data: user, error: userError } = await supabase
         .from('users')
         .select('*')
@@ -67,7 +75,6 @@ export default function PerfilPage() {
     setError('')
     setSuccess('')
 
-    // Validaciones
     if (!nombreNegocio || nombreNegocio.trim().length < 3) {
       setError('El nombre del negocio debe tener al menos 3 caracteres')
       return
@@ -81,7 +88,6 @@ export default function PerfilPage() {
     setSaving(true)
 
     try {
-      // Actualizar nombre del negocio en tabla users
       const { error: updateError } = await supabase
         .from('users')
         .update({ nombre_negocio: nombreNegocio.trim() })
@@ -94,7 +100,6 @@ export default function PerfilPage() {
         return
       }
 
-      // Si el email cambió, actualizar en Auth
       if (email !== session.user.email) {
         const { error: emailError } = await supabase.auth.updateUser({
           email: email
@@ -108,19 +113,112 @@ export default function PerfilPage() {
         }
       }
 
-      // Actualizar estado local
       setUserData({ ...userData, nombre_negocio: nombreNegocio.trim() })
       setSuccess('✅ Cambios guardados exitosamente')
       setIsEditing(false)
       setSaving(false)
 
-      // Limpiar mensaje de éxito después de 3 segundos
       setTimeout(() => setSuccess(''), 3000)
 
     } catch (error: any) {
       console.error('Unexpected error:', error)
       setError('Error inesperado. Intenta de nuevo.')
       setSaving(false)
+    }
+  }
+
+  const validatePassword = (password: string) => {
+    if (!password) return 'La contraseña es requerida'
+    if (password.length < 8) return 'Mínimo 8 caracteres'
+    if (!/\d/.test(password)) return 'Debe incluir al menos un número'
+    if (!/[a-zA-Z]/.test(password)) return 'Debe incluir al menos una letra'
+    return ''
+  }
+
+  const handleOpenPasswordModal = () => {
+    setShowPasswordModal(true)
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
+    setPasswordSuccess('')
+  }
+
+  const handleClosePasswordModal = () => {
+    if (savingPassword) return
+    setShowPasswordModal(false)
+    setCurrentPassword('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setPasswordError('')
+    setPasswordSuccess('')
+  }
+
+  const handleChangePassword = async () => {
+    setPasswordError('')
+    setPasswordSuccess('')
+
+    // Validaciones
+    if (!currentPassword) {
+      setPasswordError('Ingresa tu contraseña actual')
+      return
+    }
+
+    const newPasswordError = validatePassword(newPassword)
+    if (newPasswordError) {
+      setPasswordError(newPasswordError)
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Las contraseñas no coinciden')
+      return
+    }
+
+    if (currentPassword === newPassword) {
+      setPasswordError('La nueva contraseña debe ser diferente a la actual')
+      return
+    }
+
+    setSavingPassword(true)
+
+    try {
+      // Primero verificar la contraseña actual intentando hacer login
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: session.user.email,
+        password: currentPassword
+      })
+
+      if (signInError) {
+        setPasswordError('La contraseña actual es incorrecta')
+        setSavingPassword(false)
+        return
+      }
+
+      // Si la verificación pasa, actualizar la contraseña
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword
+      })
+
+      if (updateError) {
+        console.error('Error updating password:', updateError)
+        setPasswordError('Error al cambiar la contraseña. Intenta de nuevo.')
+        setSavingPassword(false)
+        return
+      }
+
+      setPasswordSuccess('✅ Contraseña actualizada exitosamente')
+      setSavingPassword(false)
+
+      // Cerrar modal después de 2 segundos
+      setTimeout(() => {
+        handleClosePasswordModal()
+      }, 2000)
+
+    } catch (error: any) {
+      console.error('Unexpected error:', error)
+      setPasswordError('Error inesperado. Intenta de nuevo.')
+      setSavingPassword(false)
     }
   }
 
@@ -139,7 +237,6 @@ export default function PerfilPage() {
     return null
   }
 
-  // Mapeo de industries
   const industryNames: { [key: string]: string } = {
     'dentista': '🦷 Dentista / Odontología',
     'spa': '💆 Spa / Estética',
@@ -168,7 +265,7 @@ export default function PerfilPage() {
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 py-8">
         
-        {/* Header con botón editar */}
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -215,7 +312,6 @@ export default function PerfilPage() {
           
           <div className="p-6 space-y-6">
             
-            {/* Nombre del Negocio */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Nombre del Negocio
@@ -238,7 +334,6 @@ export default function PerfilPage() {
               )}
             </div>
 
-            {/* Tipo de Negocio (No editable) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tipo de Negocio
@@ -253,7 +348,6 @@ export default function PerfilPage() {
               </p>
             </div>
 
-            {/* Subdominio (No editable) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Tu Página Pública
@@ -281,7 +375,6 @@ export default function PerfilPage() {
           
           <div className="p-6 space-y-6">
             
-            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email
@@ -309,7 +402,6 @@ export default function PerfilPage() {
               )}
             </div>
 
-            {/* Contraseña (Link a cambiar) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Contraseña
@@ -319,7 +411,10 @@ export default function PerfilPage() {
                   ••••••••
                 </p>
                 {!isEditing && (
-                  <button className="text-sm text-blue-500 hover:text-blue-600 font-medium">
+                  <button 
+                    onClick={handleOpenPasswordModal}
+                    className="text-sm text-blue-500 hover:text-blue-600 font-medium"
+                  >
                     Cambiar contraseña
                   </button>
                 )}
@@ -362,7 +457,7 @@ export default function PerfilPage() {
           </div>
         )}
 
-        {/* Personalización (sin editar aún) */}
+        {/* Personalización */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-6">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900">
@@ -419,6 +514,114 @@ export default function PerfilPage() {
         </div>
 
       </main>
+
+      {/* Modal Cambiar Contraseña */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                🔐 Cambiar Contraseña
+              </h3>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              
+              {passwordError && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600">{passwordError}</p>
+                </div>
+              )}
+
+              {passwordSuccess && (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="text-sm text-green-600">{passwordSuccess}</p>
+                </div>
+              )}
+
+              {/* Contraseña Actual */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Contraseña Actual
+                </label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  disabled={savingPassword}
+                  placeholder="Tu contraseña actual"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              {/* Nueva Contraseña */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  disabled={savingPassword}
+                  placeholder="Mínimo 8 caracteres"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Mínimo 8 caracteres, incluye números y letras
+                </p>
+              </div>
+
+              {/* Confirmar Contraseña */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Confirmar Nueva Contraseña
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  disabled={savingPassword}
+                  placeholder="Repite tu nueva contraseña"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center gap-3">
+              <button
+                onClick={handleChangePassword}
+                disabled={savingPassword}
+                className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+              >
+                {savingPassword ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Actualizando...
+                  </>
+                ) : (
+                  'Cambiar Contraseña'
+                )}
+              </button>
+              
+              <button
+                onClick={handleClosePasswordModal}
+                disabled={savingPassword}
+                className="px-4 py-3 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 font-medium rounded-lg border border-gray-200 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
