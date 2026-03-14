@@ -16,6 +16,7 @@ export default function PerfilPage() {
   const [saving, setSaving] = useState(false)
   const [nombreNegocio, setNombreNegocio] = useState('')
   const [email, setEmail] = useState('')
+  const [colorPrimario, setColorPrimario] = useState('#3B82F6')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -33,6 +34,18 @@ export default function PerfilPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoError, setLogoError] = useState('')
+
+  // Paleta de colores predefinidos
+  const colorPresets = [
+    { name: 'Azul', color: '#3B82F6' },
+    { name: 'Púrpura', color: '#8B5CF6' },
+    { name: 'Verde', color: '#10B981' },
+    { name: 'Rojo', color: '#EF4444' },
+    { name: 'Naranja', color: '#F59E0B' },
+    { name: 'Rosa', color: '#EC4899' },
+    { name: 'Cyan', color: '#06B6D4' },
+    { name: 'Índigo', color: '#6366F1' },
+  ]
 
   useEffect(() => {
     const getSession = async () => {
@@ -55,6 +68,7 @@ export default function PerfilPage() {
         setUserData(user)
         setNombreNegocio(user.nombre_negocio || '')
         setEmail(data.session.user.email || '')
+        setColorPrimario(user.color_primario || '#3B82F6')
         if (user.logo_url) {
           setLogoPreview(user.logo_url)
         }
@@ -76,6 +90,7 @@ export default function PerfilPage() {
     setIsEditing(false)
     setNombreNegocio(userData.nombre_negocio || '')
     setEmail(session.user.email || '')
+    setColorPrimario(userData.color_primario || '#3B82F6')
     setError('')
     setSuccess('')
     setLogoFile(null)
@@ -90,15 +105,13 @@ export default function PerfilPage() {
 
     setLogoError('')
 
-    // Validar tipo de archivo
     const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp']
     if (!validTypes.includes(file.type)) {
       setLogoError('Solo se permiten imágenes PNG, JPG o WEBP')
       return
     }
 
-    // Validar tamaño (máximo 2MB)
-    const maxSize = 2 * 1024 * 1024 // 2MB
+    const maxSize = 2 * 1024 * 1024
     if (file.size > maxSize) {
       setLogoError('El logo debe pesar menos de 2MB')
       return
@@ -106,7 +119,6 @@ export default function PerfilPage() {
 
     setLogoFile(file)
 
-    // Crear preview
     const reader = new FileReader()
     reader.onloadend = () => {
       setLogoPreview(reader.result as string)
@@ -126,12 +138,10 @@ export default function PerfilPage() {
     setUploadingLogo(true)
 
     try {
-      // Generar nombre único para el archivo
       const fileExt = logoFile.name.split('.').pop()
       const fileName = `${session.user.id}-${Date.now()}.${fileExt}`
       const filePath = `${fileName}`
 
-      // Si ya tiene logo, eliminar el anterior
       if (userData.logo_url) {
         const oldFileName = userData.logo_url.split('/').pop()
         if (oldFileName) {
@@ -141,7 +151,6 @@ export default function PerfilPage() {
         }
       }
 
-      // Subir nuevo logo
       const { error: uploadError } = await supabase.storage
         .from('logos')
         .upload(filePath, logoFile, {
@@ -154,7 +163,6 @@ export default function PerfilPage() {
         throw new Error('Error al subir el logo')
       }
 
-      // Obtener URL pública
       const { data: { publicUrl } } = supabase.storage
         .from('logos')
         .getPublicUrl(filePath)
@@ -187,7 +195,6 @@ export default function PerfilPage() {
     setSaving(true)
 
     try {
-      // Subir logo si hay uno nuevo
       let logoUrl = userData.logo_url
       if (logoFile) {
         const uploadedUrl = await uploadLogo()
@@ -196,12 +203,12 @@ export default function PerfilPage() {
         }
       }
 
-      // Actualizar datos en BD
       const { error: updateError } = await supabase
         .from('users')
         .update({ 
           nombre_negocio: nombreNegocio.trim(),
-          logo_url: logoUrl
+          logo_url: logoUrl,
+          color_primario: colorPrimario
         })
         .eq('id', session.user.id)
 
@@ -212,7 +219,6 @@ export default function PerfilPage() {
         return
       }
 
-      // Actualizar email si cambió
       if (email !== session.user.email) {
         const { error: emailError } = await supabase.auth.updateUser({
           email: email
@@ -226,11 +232,11 @@ export default function PerfilPage() {
         }
       }
 
-      // Actualizar estado local
       setUserData({ 
         ...userData, 
         nombre_negocio: nombreNegocio.trim(),
-        logo_url: logoUrl
+        logo_url: logoUrl,
+        color_primario: colorPrimario
       })
       setLogoFile(null)
       setSuccess('✅ Cambios guardados exitosamente')
@@ -556,7 +562,6 @@ export default function PerfilPage() {
               </label>
               
               <div className="flex items-start gap-4">
-                {/* Preview del Logo */}
                 <div className="w-24 h-24 bg-gray-100 rounded-lg border-2 border-gray-200 flex items-center justify-center overflow-hidden flex-shrink-0">
                   {logoPreview ? (
                     <img 
@@ -571,7 +576,6 @@ export default function PerfilPage() {
                   )}
                 </div>
 
-                {/* Controles */}
                 <div className="flex-1">
                   {isEditing ? (
                     <div className="space-y-3">
@@ -619,18 +623,109 @@ export default function PerfilPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Color de Marca
               </label>
-              <div className="flex items-center gap-3">
-                <div 
-                  className="w-12 h-12 rounded-lg border-2 border-gray-200 shadow-sm"
-                  style={{ backgroundColor: userData.color_primario || '#3B82F6' }}
-                ></div>
-                <div>
-                  <p className="text-gray-900 font-mono text-sm">
-                    {userData.color_primario || '#3B82F6'}
-                  </p>
-                  <p className="text-xs text-gray-400">Próximamente: Cambiar color</p>
+              
+              {isEditing ? (
+                <div className="space-y-4">
+                  {/* Color Picker Nativo */}
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="color"
+                      value={colorPrimario}
+                      onChange={(e) => setColorPrimario(e.target.value)}
+                      disabled={saving}
+                      className="w-20 h-20 rounded-lg border-2 border-gray-200 cursor-pointer disabled:cursor-not-allowed"
+                    />
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        value={colorPrimario}
+                        onChange={(e) => {
+                          const value = e.target.value
+                          if (/^#[0-9A-F]{0,6}$/i.test(value) || value === '') {
+                            setColorPrimario(value)
+                          }
+                        }}
+                        disabled={saving}
+                        placeholder="#3B82F6"
+                        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed font-mono"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Código hexadecimal (ej: #3B82F6)
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Paleta de Colores Predefinidos */}
+                  <div>
+                    <p className="text-sm text-gray-600 mb-3">Colores sugeridos:</p>
+                    <div className="grid grid-cols-4 gap-3">
+                      {colorPresets.map((preset) => (
+                        <button
+                          key={preset.color}
+                          type="button"
+                          onClick={() => setColorPrimario(preset.color)}
+                          disabled={saving}
+                          className={`relative group`}
+                        >
+                          <div
+                            className={`w-full aspect-square rounded-lg border-2 transition ${
+                              colorPrimario === preset.color
+                                ? 'border-gray-900 ring-2 ring-gray-900 ring-offset-2'
+                                : 'border-gray-200 hover:border-gray-400'
+                            }`}
+                            style={{ backgroundColor: preset.color }}
+                          >
+                            {colorPrimario === preset.color && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <svg className="w-6 h-6 text-white drop-shadow-lg" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 mt-1 text-center">{preset.name}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preview del Color */}
+                  <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                    <p className="text-sm font-medium text-gray-700 mb-3">Preview:</p>
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        className="px-6 py-3 text-white font-semibold rounded-lg shadow-sm"
+                        style={{ backgroundColor: colorPrimario }}
+                      >
+                        Botón de Ejemplo
+                      </button>
+                      <div
+                        className="w-full h-2 rounded-full"
+                        style={{ backgroundColor: colorPrimario }}
+                      ></div>
+                      <p className="text-xs text-gray-500">
+                        Este color se usará en tu página pública para botones, enlaces y acentos
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-12 h-12 rounded-lg border-2 border-gray-200 shadow-sm"
+                    style={{ backgroundColor: userData.color_primario || '#3B82F6' }}
+                  ></div>
+                  <div>
+                    <p className="text-gray-900 font-mono text-sm">
+                      {userData.color_primario || '#3B82F6'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Color que se usará en tu página pública
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
           </div>
