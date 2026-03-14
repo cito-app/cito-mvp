@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -24,7 +24,6 @@ export default function DashboardPage() {
 
       setSession(data.session)
 
-      // Obtener datos del usuario desde la tabla users
       if (data.session?.user) {
         const { data: user, error: userError } = await supabase
           .from('users')
@@ -88,11 +87,19 @@ export default function DashboardPage() {
             
             {/* Logo */}
             <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-80 transition">
-              <img 
-                src="/logos/cito-logo-h.jpg" 
-                alt="Cito.mx" 
-                className="h-10"
-              />
+              {userData?.logo_url ? (
+                <img 
+                  src={userData.logo_url} 
+                  alt={userData.nombre_negocio || 'Logo'}
+                  className="h-10 w-auto object-contain"
+                />
+              ) : (
+                <img 
+                  src="/logos/cito-logo-h.png" 
+                  alt="Cito.mx" 
+                  className="h-10"
+                />
+              )}
             </Link>
 
             {/* Navigation */}
@@ -136,23 +143,23 @@ export default function DashboardPage() {
               </button>
 
               {/* Dropdown Menu */}
-          {showUserMenu && (
-          <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
-          <div className="px-4 py-3 border-b border-gray-100">
-            <p className="text-sm font-medium text-gray-900">{session.user.email}</p>
-            {userData?.industry && (
-            <p className="text-xs text-gray-500 mt-1 capitalize">
-                {userData.industry === 'dentista' && '🦷 Dentista'}
-                {userData.industry === 'spa' && '💆 Spa / Estética'}
-                {userData.industry === 'veterinaria' && '🐕 Veterinaria'}
-                {userData.industry === 'gym' && '💪 Gimnasio'}
-                {userData.industry === 'medico' && '⚕️ Consultorio Médico'}
-                {userData.industry === 'salon' && '💇 Salón de Belleza'}
-                {userData.industry === 'psicologo' && '🧠 Psicología'}
-                {userData.industry === 'otro' && '📋 Otro'}
-              </p>
-           )}
-          </div>
+              {showUserMenu && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 py-2">
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <p className="text-sm font-medium text-gray-900">{session.user.email}</p>
+                    {userData?.industry && (
+                      <p className="text-xs text-gray-500 mt-1 capitalize">
+                        {userData.industry === 'dentista' && '🦷 Dentista'}
+                        {userData.industry === 'spa' && '💆 Spa / Estética'}
+                        {userData.industry === 'veterinaria' && '🐕 Veterinaria'}
+                        {userData.industry === 'gym' && '💪 Gimnasio'}
+                        {userData.industry === 'medico' && '⚕️ Consultorio Médico'}
+                        {userData.industry === 'salon' && '💇 Salón de Belleza'}
+                        {userData.industry === 'psicologo' && '🧠 Psicología'}
+                        {userData.industry === 'otro' && '📋 Otro'}
+                      </p>
+                    )}
+                  </div>
                   
                   <Link
                     href="/dashboard/perfil"
@@ -202,6 +209,29 @@ export default function DashboardPage() {
             Bienvenido a tu panel de control de Cito.mx
           </p>
         </div>
+
+        {/* Logo Preview Info (si tiene logo) */}
+        {userData?.logo_url && (
+          <div className="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white rounded-lg border border-blue-300 flex items-center justify-center overflow-hidden">
+                <img 
+                  src={userData.logo_url} 
+                  alt="Tu logo" 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-blue-900">
+                  ✨ Tu logo está activo
+                </p>
+                <p className="text-xs text-blue-700">
+                  Aparece en tu navbar y pronto en tu página pública
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -256,7 +286,9 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">Personaliza tu perfil</p>
-                  <p className="text-sm text-gray-500">Agrega tu logo y colores de marca</p>
+                  <p className="text-sm text-gray-500">
+                    {userData?.logo_url ? 'Logo cargado ✅ - Edita tu información' : 'Agrega tu logo y colores de marca'}
+                  </p>
                 </div>
               </div>
               <svg className="w-5 h-5 text-gray-400 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -308,6 +340,7 @@ export default function DashboardPage() {
               <p><span className="font-medium">Email:</span> {session.user.email}</p>
               <p><span className="font-medium">Subdominio:</span> {userData?.subdominio}</p>
               <p><span className="font-medium">Industry:</span> {userData?.industry}</p>
+              <p><span className="font-medium">Logo URL:</span> {userData?.logo_url || 'Sin logo'}</p>
               <p><span className="font-medium">Sesión expira:</span> {new Date(session.expires_at! * 1000).toLocaleString()}</p>
             </div>
           </details>
