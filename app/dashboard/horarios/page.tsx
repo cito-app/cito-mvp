@@ -10,7 +10,7 @@ type DayOfWeek = 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'saba
 
 type TimeBlock = {
   id: string
-  start_time: string // HH:MM formato 24h
+  start_time: string
   end_time: string
 }
 
@@ -27,7 +27,6 @@ export default function HorariosPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   
-  // Estados de horarios
   const [schedule, setSchedule] = useState<DaySchedule[]>([
     { day: 'lunes', is_available: false, blocks: [] },
     { day: 'martes', is_available: false, blocks: [] },
@@ -47,8 +46,13 @@ export default function HorariosPage() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('18:00')
   const [modalError, setModalError] = useState('')
+  const [modalWarning, setModalWarning] = useState('')
 
-  // Nombres de días en español
+  // Estados del modal de copiar
+  const [showCopyModal, setShowCopyModal] = useState(false)
+  const [selectedDaysToCopy, setSelectedDaysToCopy] = useState<DayOfWeek[]>([])
+  const [copying, setCopying] = useState(false)
+
   const dayNames: Record<DayOfWeek, string> = {
     'lunes': 'Lunes',
     'martes': 'Martes',
@@ -80,9 +84,7 @@ export default function HorariosPage() {
         setUserData(user)
       }
 
-      // Cargar horarios desde BD
       await loadSchedule(data.session.user.id)
-
       setLoading(false)
     }
 
@@ -102,7 +104,6 @@ export default function HorariosPage() {
     }
 
     if (availability && availability.length > 0) {
-      // Agrupar por día
       const newSchedule: DaySchedule[] = [
         { day: 'lunes', is_available: false, blocks: [] },
         { day: 'martes', is_available: false, blocks: [] },
@@ -133,14 +134,12 @@ export default function HorariosPage() {
     const dayData = schedule.find(d => d.day === day)
     
     if (dayData?.is_available && dayData.blocks.length > 0) {
-      // Si tiene bloques, preguntar antes de desactivar
       const confirmed = confirm(
         `¿Deseas desactivar ${dayNames[day]}? Esto eliminará todos los horarios configurados para este día.`
       )
       
       if (!confirmed) return
 
-      // Eliminar todos los bloques de este día
       const blockIds = dayData.blocks.map(b => b.id)
       
       const { error } = await supabase
@@ -154,14 +153,12 @@ export default function HorariosPage() {
         return
       }
 
-      // Actualizar estado local
       setSchedule(prev => prev.map(d => 
         d.day === day 
           ? { ...d, is_available: false, blocks: [] }
           : d
       ))
     } else {
-      // Solo cambiar el estado local (sin bloques aún)
       setSchedule(prev => prev.map(d => 
         d.day === day 
           ? { ...d, is_available: !d.is_available }
@@ -170,38 +167,41 @@ export default function HorariosPage() {
     }
   }
 
-  const openAddModal = () => {
-    setModalMode('add')
-    setEditingBlock(null)
-    setStartTime('09:00')
-    setEndTime('18:00')
-    setModalError('')
-    setShowModal(true)
-  }
-
-  const openEditModal = (block: TimeBlock) => {
-    setModalMode('edit')
-    setEditingBlock(block)
-    setStartTime(block.start_time)
-    setEndTime(block.end_time)
-    setModalError('')
-    setShowModal(true)
-  }
-
-  const closeModal = () => {
-    if (saving) return
-    setShowModal(false)
-    setModalError('')
+  const timeToMinutes = (time: string): number => {
+    const [hours, minutes] = time.split(':').map(Number)
+    return hours * 60 + minutes
   }
 
   const validateTimeBlock = () => {
-    // Validar que hora fin > hora inicio
+    setModalError('')
+    setModalWarning('')
+
+    // Validación básica: hora fin > hora inicio
     if (endTime <= startTime) {
       setModalError('La hora de fin debe ser posterior a la hora de inicio')
       return false
     }
 
-    // Validar solapamiento con otros bloques (excepto el que estamos editando)
+    // Validación: duración mínima de 30 minutos
+    const durationMinutes = timeToMinutes(endTime) - timeToMinutes(startTime)
+    if (durationMinutes < 30) {
+      setModalError('El bloque debe tener una duración mínima de 30 minutos')
+      return false
+    }
+
+    // Validación: horario razonable (6:00 AM - 11:00 PM)
+    const startMinutes = timeToMinutes(startTime)
+    const endMinutes = timeToMinutes(endTime)
+    
+    if (startMinutes < 360) { // Antes de 6:00 AM
+      setModalWarning('⚠️ Horario muy temprano: ¿Seguro que atiendes antes de las 6:00 AM?')
+    }
+    
+    if (endMinutes > 1380) { // Después de 11:00 PM
+      setModalWarning('⚠️ Horario muy tarde: ¿Seguro que atiendes después de las 11:00 PM?')
+    }
+
+    // Validar solapamiento
     const dayData = schedule.find(d => d.day === selectedDay)
     if (dayData) {
       const otherBlocks = dayData.blocks.filter(b => 
@@ -209,7 +209,6 @@ export default function HorariosPage() {
       )
 
       for (const block of otherBlocks) {
-        // Verificar si se solapan
         if (
           (startTime >= block.start_time && startTime < block.end_time) ||
           (endTime > block.start_time && endTime <= block.end_time) ||
@@ -219,97 +218,138 @@ export default function HorariosPage() {
           return false
         }
       }
+
+      // Validación: máximo 6 bloques por día
+      if (modalMode === 'add' && otherBlocks.length >= 6) {
+        setModalError('Máximo 6 bloques de horarios por día')
+        return false
+      }
     }
 
     return true
   }
 
-  const handleSaveBlock = async () => {
+  const openAddModal = () => {
+    setModalMode('add')
+    setEditingBlock(null)
+    setStartTime('09:00')
+    setEndTime('18:00')
     setModalError('')
+    setModalWarning('')
+    setShowModal(true)
+  }
 
-    if (!validateTimeBlock()) {
+  const openEditModal = (block: TimeBlock) => {
+    setModalMode('edit')
+    setEditingBlock(block)
+    setStartTime(block.start_time)
+    setEndTime(block.end_time)
+    setModalError('')
+    setModalWarning('')
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    if (saving) return
+    setShowModal(false)
+    setModalError('')
+    setModalWarning('')
+  }
+
+const handleSaveBlock = async () => {
+  setModalError('')
+  setModalWarning('')
+
+  if (!validateTimeBlock()) {
+    return
+  }
+
+  // Si hay un warning, pedir confirmación adicional
+  if (modalWarning && !modalError) {
+    const confirmed = confirm(
+      `${modalWarning}\n\n¿Estás seguro de que quieres guardar este horario?`
+    )
+    
+    if (!confirmed) {
       return
     }
+  }
 
-    setSaving(true)
+  setSaving(true)
 
-    try {
-      if (modalMode === 'add') {
-        // Crear nuevo bloque
-        const { data, error } = await supabase
-          .from('availability')
-          .insert({
-            user_id: session.user.id,
-            day_of_week: selectedDay,
-            start_time: startTime,
-            end_time: endTime
-          })
-          .select()
-          .single()
+  try {
+    if (modalMode === 'add') {
+      const { data, error } = await supabase
+        .from('availability')
+        .insert({
+          user_id: session.user.id,
+          day_of_week: selectedDay,
+          start_time: startTime,
+          end_time: endTime
+        })
+        .select()
+        .single()
 
-        if (error) {
-          console.error('Error creating block:', error)
-          setModalError('Error al guardar el horario')
-          setSaving(false)
-          return
-        }
-
-        // Actualizar estado local
-        setSchedule(prev => prev.map(d => 
-          d.day === selectedDay
-            ? {
-                ...d,
-                is_available: true,
-                blocks: [...d.blocks, {
-                  id: data.id,
-                  start_time: data.start_time,
-                  end_time: data.end_time
-                }].sort((a, b) => a.start_time.localeCompare(b.start_time))
-              }
-            : d
-        ))
-
-      } else {
-        // Actualizar bloque existente
-        const { error } = await supabase
-          .from('availability')
-          .update({
-            start_time: startTime,
-            end_time: endTime
-          })
-          .eq('id', editingBlock!.id)
-
-        if (error) {
-          console.error('Error updating block:', error)
-          setModalError('Error al actualizar el horario')
-          setSaving(false)
-          return
-        }
-
-        // Actualizar estado local
-        setSchedule(prev => prev.map(d => 
-          d.day === selectedDay
-            ? {
-                ...d,
-                blocks: d.blocks.map(b => 
-                  b.id === editingBlock!.id
-                    ? { ...b, start_time: startTime, end_time: endTime }
-                    : b
-                ).sort((a, b) => a.start_time.localeCompare(b.start_time))
-              }
-            : d
-        ))
+      if (error) {
+        console.error('Error creating block:', error)
+        setModalError('Error al guardar el horario')
+        setSaving(false)
+        return
       }
 
-      setSaving(false)
-      setShowModal(false)
+      setSchedule(prev => prev.map(d => 
+        d.day === selectedDay
+          ? {
+              ...d,
+              is_available: true,
+              blocks: [...d.blocks, {
+                id: data.id,
+                start_time: data.start_time,
+                end_time: data.end_time
+              }].sort((a, b) => a.start_time.localeCompare(b.start_time))
+            }
+          : d
+      ))
 
-    } catch (error: any) {
-      console.error('Unexpected error:', error)
-      setModalError('Error inesperado. Intenta de nuevo.')
-      setSaving(false)
+    } else {
+      const { error } = await supabase
+        .from('availability')
+        .update({
+          start_time: startTime,
+          end_time: endTime
+        })
+        .eq('id', editingBlock!.id)
+
+      if (error) {
+        console.error('Error updating block:', error)
+        setModalError('Error al actualizar el horario')
+        setSaving(false)
+        return
+      }
+
+      setSchedule(prev => prev.map(d => 
+        d.day === selectedDay
+          ? {
+              ...d,
+              blocks: d.blocks.map(b => 
+                b.id === editingBlock!.id
+                  ? { ...b, start_time: startTime, end_time: endTime }
+                  : b
+              ).sort((a, b) => a.start_time.localeCompare(b.start_time))
+            }
+          : d
+      ))
     }
+
+    setSaving(false)
+    setShowModal(false)
+
+  } catch (error: any) {
+    console.error('Unexpected error:', error)
+    setModalError('Error inesperado. Intenta de nuevo.')
+    setSaving(false)
   }
+}
 
   const handleDeleteBlock = async (blockId: string) => {
     const confirmed = confirm('¿Estás seguro de eliminar este horario?')
@@ -326,7 +366,6 @@ export default function HorariosPage() {
       return
     }
 
-    // Actualizar estado local
     setSchedule(prev => prev.map(d => {
       const newBlocks = d.blocks.filter(b => b.id !== blockId)
       return d.day === selectedDay
@@ -337,6 +376,99 @@ export default function HorariosPage() {
           }
         : d
     }))
+  }
+
+  const openCopyModal = () => {
+    const currentDay = schedule.find(d => d.day === selectedDay)
+    if (!currentDay || currentDay.blocks.length === 0) {
+      alert('No hay horarios configurados para copiar')
+      return
+    }
+
+    setSelectedDaysToCopy([])
+    setShowCopyModal(true)
+  }
+
+  const toggleDayToCopy = (day: DayOfWeek) => {
+    if (day === selectedDay) return // No copiar al mismo día
+
+    setSelectedDaysToCopy(prev => 
+      prev.includes(day)
+        ? prev.filter(d => d !== day)
+        : [...prev, day]
+    )
+  }
+
+  const handleCopySchedule = async () => {
+    if (selectedDaysToCopy.length === 0) {
+      alert('Selecciona al menos un día')
+      return
+    }
+
+    const currentDay = schedule.find(d => d.day === selectedDay)
+    if (!currentDay || currentDay.blocks.length === 0) {
+      alert('No hay horarios para copiar')
+      return
+    }
+
+    const confirmed = confirm(
+      `¿Copiar los ${currentDay.blocks.length} horarios de ${dayNames[selectedDay]} a ${selectedDaysToCopy.length} día(s)? Esto eliminará los horarios existentes en esos días.`
+    )
+
+    if (!confirmed) return
+
+    setCopying(true)
+
+    try {
+      // Eliminar horarios existentes de los días seleccionados
+      for (const day of selectedDaysToCopy) {
+        const dayData = schedule.find(d => d.day === day)
+        if (dayData && dayData.blocks.length > 0) {
+          const blockIds = dayData.blocks.map(b => b.id)
+          await supabase
+            .from('availability')
+            .delete()
+            .in('id', blockIds)
+        }
+      }
+
+      // Copiar horarios
+      const newBlocks = []
+      for (const day of selectedDaysToCopy) {
+        for (const block of currentDay.blocks) {
+          newBlocks.push({
+            user_id: session.user.id,
+            day_of_week: day,
+            start_time: block.start_time,
+            end_time: block.end_time
+          })
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('availability')
+        .insert(newBlocks)
+        .select()
+
+      if (error) {
+        console.error('Error copying schedule:', error)
+        alert('Error al copiar horarios')
+        setCopying(false)
+        return
+      }
+
+      // Actualizar estado local
+      await loadSchedule(session.user.id)
+
+      setCopying(false)
+      setShowCopyModal(false)
+      alert(`✅ Horarios copiados exitosamente a ${selectedDaysToCopy.length} día(s)`)
+
+    } catch (error: any) {
+      console.error('Unexpected error:', error)
+      alert('Error inesperado al copiar horarios')
+      setCopying(false)
+    }
   }
 
   const getSelectedDaySchedule = () => {
@@ -362,7 +494,6 @@ export default function HorariosPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Navbar Simple */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <Link href="/dashboard" className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900">
@@ -374,10 +505,8 @@ export default function HorariosPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             ⏰ Horarios de Atención
@@ -387,7 +516,6 @@ export default function HorariosPage() {
           </p>
         </div>
 
-        {/* Info Box */}
         <div className="mb-8 bg-blue-50 p-4 rounded-lg border border-blue-200">
           <div className="flex items-start gap-3">
             <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -404,7 +532,6 @@ export default function HorariosPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* Vista Semanal - Columna Izquierda */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
@@ -449,7 +576,6 @@ export default function HorariosPage() {
                 ))}
               </div>
 
-              {/* Resumen */}
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <div className="text-sm text-gray-600">
                   <p className="flex items-center justify-between mb-2">
@@ -469,30 +595,41 @@ export default function HorariosPage() {
             </div>
           </div>
 
-          {/* Detalle del Día - Columna Derecha */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
               
-              {/* Header del Día */}
               <div className="px-6 py-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-semibold text-gray-900">
                     {dayNames[selectedDay]}
                   </h2>
                   
-                  {/* Toggle Disponibilidad */}
-                  <button
-                    onClick={() => toggleDayAvailability(selectedDay)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
-                      selectedDayData?.is_available ? 'bg-green-500' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                        selectedDayData?.is_available ? 'translate-x-6' : 'translate-x-1'
+                  <div className="flex items-center gap-3">
+                    {selectedDayData?.blocks && selectedDayData.blocks.length > 0 && (
+                      <button
+                        onClick={openCopyModal}
+                        className="px-3 py-2 text-sm bg-white hover:bg-gray-50 text-gray-700 font-medium rounded-lg border border-gray-200 transition flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copiar a otros días
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={() => toggleDayAvailability(selectedDay)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                        selectedDayData?.is_available ? 'bg-green-500' : 'bg-gray-300'
                       }`}
-                    />
-                  </button>
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                          selectedDayData?.is_available ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 </div>
                 
                 <p className="text-sm text-gray-500 mt-1">
@@ -502,10 +639,8 @@ export default function HorariosPage() {
                 </p>
               </div>
 
-              {/* Contenido del Día */}
               <div className="p-6">
                 {!selectedDayData?.is_available ? (
-                  // Estado deshabilitado
                   <div className="text-center py-12">
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -518,7 +653,6 @@ export default function HorariosPage() {
                     </p>
                   </div>
                 ) : selectedDayData.blocks.length === 0 ? (
-                  // Sin bloques aún
                   <div className="text-center py-12">
                     <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -537,7 +671,6 @@ export default function HorariosPage() {
                     </button>
                   </div>
                 ) : (
-                  // Con bloques
                   <div className="space-y-3">
                     {selectedDayData.blocks.map((block) => (
                       <div 
@@ -614,6 +747,12 @@ export default function HorariosPage() {
                 </div>
               )}
 
+              {modalWarning && !modalError && (
+                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">{modalWarning}</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Hora de Inicio
@@ -642,7 +781,7 @@ export default function HorariosPage() {
 
               <div className="bg-blue-50 p-3 rounded-lg">
                 <p className="text-xs text-blue-800">
-                  💡 Asegúrate de que los horarios no se solapen con otros bloques del mismo día
+                  💡 Los bloques deben tener mínimo 30 minutos de duración y no pueden solaparse con otros horarios
                 </p>
               </div>
 
@@ -667,6 +806,100 @@ export default function HorariosPage() {
               <button
                 onClick={closeModal}
                 disabled={saving}
+                className="px-4 py-3 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 font-medium rounded-lg border border-gray-200 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Copiar Horarios */}
+      {showCopyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                📋 Copiar Horarios
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Copiar de {dayNames[selectedDay]} a otros días
+              </p>
+            </div>
+
+            <div className="p-6">
+              <p className="text-sm text-gray-600 mb-4">
+                Selecciona los días donde quieres copiar estos horarios:
+              </p>
+
+              <div className="space-y-2">
+                {schedule.map((day) => {
+                  if (day.day === selectedDay) return null
+
+                  return (
+                    <button
+                      key={day.day}
+                      onClick={() => toggleDayToCopy(day.day)}
+                      disabled={copying}
+                      className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition ${
+                        selectedDaysToCopy.includes(day.day)
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      } ${copying ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <span className={`font-medium ${
+                        selectedDaysToCopy.includes(day.day) ? 'text-blue-900' : 'text-gray-900'
+                      }`}>
+                        {dayNames[day.day]}
+                      </span>
+                      
+                      {selectedDaysToCopy.includes(day.day) && (
+                        <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                      
+                      {day.blocks.length > 0 && !selectedDaysToCopy.includes(day.day) && (
+                        <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                          {day.blocks.length} existente(s)
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {selectedDaysToCopy.length > 0 && (
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-xs text-yellow-800">
+                    ⚠️ Esto eliminará los horarios existentes en los días seleccionados
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center gap-3">
+              <button
+                onClick={handleCopySchedule}
+                disabled={copying || selectedDaysToCopy.length === 0}
+                className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+              >
+                {copying ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Copiando...
+                  </>
+                ) : (
+                  `Copiar a ${selectedDaysToCopy.length} día(s)`
+                )}
+              </button>
+              
+              <button
+                onClick={() => setShowCopyModal(false)}
+                disabled={copying}
                 className="px-4 py-3 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 font-medium rounded-lg border border-gray-200 transition"
               >
                 Cancelar
