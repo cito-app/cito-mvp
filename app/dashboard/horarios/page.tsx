@@ -20,6 +20,15 @@ type DaySchedule = {
   blocks: TimeBlock[]
 }
 
+type Exception = {
+  id: string
+  exception_date: string // YYYY-MM-DD
+  is_closed: boolean
+  custom_start_time?: string
+  custom_end_time?: string
+  reason?: string
+}
+
 export default function HorariosPage() {
   const router = useRouter()
   const [session, setSession] = useState<any>(null)
@@ -53,6 +62,16 @@ export default function HorariosPage() {
   const [showCopyModal, setShowCopyModal] = useState(false)
   const [selectedDaysToCopy, setSelectedDaysToCopy] = useState<DayOfWeek[]>([])
   const [copying, setCopying] = useState(false)
+
+  // Estados de excepciones
+  const [exceptions, setExceptions] = useState<Exception[]>([])
+  const [showExceptionModal, setShowExceptionModal] = useState(false)
+  const [exceptionDate, setExceptionDate] = useState('')
+  const [exceptionIsClosed, setExceptionIsClosed] = useState(true)
+  const [exceptionStartTime, setExceptionStartTime] = useState('09:00')
+  const [exceptionEndTime, setExceptionEndTime] = useState('18:00')
+  const [exceptionReason, setExceptionReason] = useState('')
+  const [savingException, setSavingException] = useState(false)
 
   const dayNames: Record<DayOfWeek, string> = {
     'lunes': 'Lunes',
@@ -96,6 +115,7 @@ export default function HorariosPage() {
       }
 
       await loadSchedule(data.session.user.id)
+      await loadExceptions(data.session.user.id)
       setLoading(false)
     }
 
@@ -142,6 +162,26 @@ export default function HorariosPage() {
 
     // Actualizar el estado SIEMPRE (incluso si está vacío)
     setSchedule(newSchedule)
+  }
+
+  const loadExceptions = async (userId: string) => {
+    const today = new Date().toISOString().split('T')[0]
+    
+    const { data: exceptionsData, error } = await supabase
+      .from('availability_exceptions')
+      .select('*')
+      .eq('user_id', userId)
+      .gte('exception_date', today)
+      .order('exception_date', { ascending: true })
+
+    if (error) {
+      console.error('Error loading exceptions:', error)
+      return
+    }
+
+    if (exceptionsData) {
+      setExceptions(exceptionsData)
+    }
   }
 
   const toggleDayAvailability = async (day: DayOfWeek) => {
@@ -219,7 +259,7 @@ export default function HorariosPage() {
   }
 
   const getWeekSlotsStats = () => {
-    if (!userData?.duracion_cita) return { totalSlots: 0, avgSlotsPerDay: '0' }
+    if (!userData?.duracion_cita) return { totalSlots: 0, avgSlotsPerDay: 0 }
     
     const totalSlots = schedule.reduce((sum, day) => sum + calculateDaySlots(day), 0)
     const activeDays = schedule.filter(d => d.is_available).length
@@ -241,6 +281,7 @@ export default function HorariosPage() {
     setSaving(true)
 
     try {
+      // Eliminar todos los horarios existentes
       const allBlockIds = schedule.flatMap(d => d.blocks.map(b => b.id))
       if (allBlockIds.length > 0) {
         await supabase
@@ -249,16 +290,19 @@ export default function HorariosPage() {
           .in('id', allBlockIds)
       }
 
+      // Crear horarios de oficina (Lun-Vie)
       const workDays: DayOfWeek[] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes']
       const newBlocks = []
 
       for (const day of workDays) {
+        // Bloque mañana
         newBlocks.push({
           user_id: session.user.id,
           day_of_week: day,
           start_time: '09:00',
           end_time: '13:00'
         })
+        // Bloque tarde
         newBlocks.push({
           user_id: session.user.id,
           day_of_week: day,
@@ -621,6 +665,101 @@ export default function HorariosPage() {
     }
   }
 
+  const openExceptionModal = () => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    setExceptionDate(tomorrow.toISOString().split('T')[0])
+    setExceptionIsClosed(true)
+    setExceptionStartTime('09:00')
+    setExceptionEndTime('18:00')
+    setExceptionReason('')
+    setShowExceptionModal(true)
+  }
+
+  const handleSaveException = async () => {
+    if (!exceptionDate) {
+      alert('Selecciona una fecha')
+      return
+    }
+
+    const selectedDate = new Date(exceptionDate + 'T00:00:00')
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    if (selectedDate < today) {
+      alert('No puedes crear excepciones en fechas pasadas')
+      return
+    }
+
+    if (!exceptionIsClosed && (!exceptionStartTime || !exceptionEndTime)) {
+      alert('Define el horario especial')
+      return
+    }
+
+    if (!exceptionIsClosed && exceptionEndTime <= exceptionStartTime) {
+      alert('La hora de fin debe ser posterior a la hora de inicio')
+      return
+    }
+
+    setSavingException(true)
+
+    try {
+      const exceptionData: any = {
+        user_id: session.user.id,
+        exception_date: exceptionDate,
+        is_closed: exceptionIsClosed,
+        reason: exceptionReason || null
+      }
+
+      if (!exceptionIsClosed) {
+        exceptionData.custom_start_time = exceptionStartTime
+        exceptionData.custom_end_time = exceptionEndTime
+      }
+
+      const { data, error } = await supabase
+        .from('availability_exceptions')
+        .insert(exceptionData)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error creating exception:', error)
+        alert('Error al crear la excepción. Es posible que ya exista una para esta fecha.')
+        setSavingException(false)
+        return
+      }
+
+      await loadExceptions(session.user.id)
+      setSavingException(false)
+      setShowExceptionModal(false)
+      alert('✅ Excepción creada exitosamente')
+
+    } catch (error) {
+      console.error('Unexpected error:', error)
+      alert('Error inesperado')
+      setSavingException(false)
+    }
+  }
+
+  const handleDeleteException = async (exceptionId: string) => {
+    const confirmed = confirm('¿Eliminar esta excepción?')
+    if (!confirmed) return
+
+    const { error } = await supabase
+      .from('availability_exceptions')
+      .delete()
+      .eq('id', exceptionId)
+
+    if (error) {
+      console.error('Error deleting exception:', error)
+      alert('Error al eliminar')
+      return
+    }
+
+    await loadExceptions(session.user.id)
+    alert('✅ Excepción eliminada')
+  }
+
   const getSelectedDaySchedule = () => {
     return schedule.find(d => d.day === selectedDay)
   }
@@ -643,6 +782,7 @@ export default function HorariosPage() {
   const selectedDayData = getSelectedDaySchedule()
   const stats = getWeekStats()
   const slotsStats = getWeekSlotsStats()
+  const upcomingExceptions = exceptions.slice(0, 5)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -745,8 +885,70 @@ export default function HorariosPage() {
             >
               🗑️ Limpiar Todo
             </button>
+            <button
+              onClick={openExceptionModal}
+              className="px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg border border-gray-200 transition"
+            >
+              📅 Agregar Excepción
+            </button>
           </div>
         </div>
+
+        {/* Excepciones Próximas */}
+        {upcomingExceptions.length > 0 && (
+          <div className="mb-8 bg-white p-4 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-gray-700">🔔 Excepciones Próximas</p>
+              <span className="text-xs text-gray-500">{exceptions.length} total</span>
+            </div>
+            <div className="space-y-2">
+              {upcomingExceptions.map((exception) => (
+                <div key={exception.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      exception.is_closed ? 'bg-red-100' : 'bg-yellow-100'
+                    }`}>
+                      {exception.is_closed ? (
+                        <span className="text-lg">🚫</span>
+                      ) : (
+                        <span className="text-lg">⏰</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {new Date(exception.exception_date + 'T00:00:00').toLocaleDateString('es-MX', {
+                          weekday: 'long',
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                      {exception.is_closed ? (
+                        <p className="text-sm text-red-600">Cerrado</p>
+                      ) : (
+                        <p className="text-sm text-yellow-700">
+                          Horario especial: {exception.custom_start_time} - {exception.custom_end_time}
+                        </p>
+                      )}
+                      {exception.reason && (
+                        <p className="text-xs text-gray-500 mt-1">{exception.reason}</p>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteException(exception.id)}
+                    className="p-2 text-gray-400 hover:text-red-500 rounded transition"
+                    title="Eliminar"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Vista Condicional */}
         {viewMode === 'grid' ? (
@@ -1074,7 +1276,7 @@ export default function HorariosPage() {
 
       </main>
 
-      {/* Modales (sin cambios - exactamente iguales) */}
+      {/* Modal Agregar/Editar Horario */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
@@ -1165,6 +1367,7 @@ export default function HorariosPage() {
         </div>
       )}
 
+      {/* Modal Copiar Horarios */}
       {showCopyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
@@ -1248,6 +1451,172 @@ export default function HorariosPage() {
               <button
                 onClick={() => setShowCopyModal(false)}
                 disabled={copying}
+                className="px-4 py-3 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 font-medium rounded-lg border border-gray-200 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Agregar Excepción */}
+      {showExceptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
+            
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900">
+                📅 Agregar Excepción
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Cerrar un día o definir horario especial
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Fecha
+                </label>
+                <input
+                  type="date"
+                  value={exceptionDate}
+                  onChange={(e) => setExceptionDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  disabled={savingException}
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Tipo de Excepción
+                </label>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => setExceptionIsClosed(true)}
+                    disabled={savingException}
+                    className={`w-full p-4 rounded-lg border-2 transition text-left ${
+                      exceptionIsClosed
+                        ? 'border-red-500 bg-red-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🚫</span>
+                      <div>
+                        <p className={`font-medium ${
+                          exceptionIsClosed ? 'text-red-900' : 'text-gray-900'
+                        }`}>
+                          Día Cerrado
+                        </p>
+                        <p className={`text-sm ${
+                          exceptionIsClosed ? 'text-red-700' : 'text-gray-600'
+                        }`}>
+                          No habrá atención este día
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setExceptionIsClosed(false)}
+                    disabled={savingException}
+                    className={`w-full p-4 rounded-lg border-2 transition text-left ${
+                      !exceptionIsClosed
+                        ? 'border-yellow-500 bg-yellow-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">⏰</span>
+                      <div>
+                        <p className={`font-medium ${
+                          !exceptionIsClosed ? 'text-yellow-900' : 'text-gray-900'
+                        }`}>
+                          Horario Especial
+                        </p>
+                        <p className={`text-sm ${
+                          !exceptionIsClosed ? 'text-yellow-700' : 'text-gray-600'
+                        }`}>
+                          Horario diferente al habitual
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {!exceptionIsClosed && (
+                <div className="space-y-3 p-4 bg-yellow-50 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Hora de Inicio
+                    </label>
+                    <input
+                      type="time"
+                      value={exceptionStartTime}
+                      onChange={(e) => setExceptionStartTime(e.target.value)}
+                      disabled={savingException}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 outline-none transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Hora de Fin
+                    </label>
+                    <input
+                      type="time"
+                      value={exceptionEndTime}
+                      onChange={(e) => setExceptionEndTime(e.target.value)}
+                      disabled={savingException}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 outline-none transition"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Motivo (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={exceptionReason}
+                  onChange={(e) => setExceptionReason(e.target.value)}
+                  disabled={savingException}
+                  placeholder="Ej: Día festivo, Vacaciones..."
+                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+              </div>
+
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 flex items-center gap-3">
+              <button
+                onClick={handleSaveException}
+                disabled={savingException}
+                className="flex-1 px-4 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition flex items-center justify-center gap-2"
+              >
+                {savingException ? (
+                  <>
+                    <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    Guardando...
+                  </>
+                ) : (
+                  'Crear Excepción'
+                )}
+              </button>
+              
+              <button
+                onClick={() => setShowExceptionModal(false)}
+                disabled={savingException}
                 className="px-4 py-3 bg-white hover:bg-gray-50 disabled:bg-gray-100 disabled:cursor-not-allowed text-gray-700 font-medium rounded-lg border border-gray-200 transition"
               >
                 Cancelar
