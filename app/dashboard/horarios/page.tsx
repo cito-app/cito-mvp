@@ -38,7 +38,7 @@ export default function HorariosPage() {
   ])
 
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('lunes')
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list') // Nueva vista
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 
   // Estados del modal
   const [showModal, setShowModal] = useState(false)
@@ -102,47 +102,47 @@ export default function HorariosPage() {
     getSession()
   }, [router])
 
-const loadSchedule = async (userId: string) => {
-  const { data: availability, error } = await supabase
-    .from('availability')
-    .select('*')
-    .eq('user_id', userId)
-    .order('start_time', { ascending: true })
+  const loadSchedule = async (userId: string) => {
+    const { data: availability, error } = await supabase
+      .from('availability')
+      .select('*')
+      .eq('user_id', userId)
+      .order('start_time', { ascending: true })
 
-  if (error) {
-    console.error('Error loading schedule:', error)
-    return
+    if (error) {
+      console.error('Error loading schedule:', error)
+      return
+    }
+
+    // Siempre inicializar con días vacíos
+    const newSchedule: DaySchedule[] = [
+      { day: 'lunes', is_available: false, blocks: [] },
+      { day: 'martes', is_available: false, blocks: [] },
+      { day: 'miercoles', is_available: false, blocks: [] },
+      { day: 'jueves', is_available: false, blocks: [] },
+      { day: 'viernes', is_available: false, blocks: [] },
+      { day: 'sabado', is_available: false, blocks: [] },
+      { day: 'domingo', is_available: false, blocks: [] },
+    ]
+
+    // Si hay horarios, llenar los días
+    if (availability && availability.length > 0) {
+      availability.forEach((slot: any) => {
+        const dayIndex = newSchedule.findIndex(d => d.day === slot.day_of_week)
+        if (dayIndex !== -1) {
+          newSchedule[dayIndex].blocks.push({
+            id: slot.id,
+            start_time: slot.start_time,
+            end_time: slot.end_time
+          })
+          newSchedule[dayIndex].is_available = true
+        }
+      })
+    }
+
+    // Actualizar el estado SIEMPRE (incluso si está vacío)
+    setSchedule(newSchedule)
   }
-
-  // Siempre inicializar con días vacíos
-  const newSchedule: DaySchedule[] = [
-    { day: 'lunes', is_available: false, blocks: [] },
-    { day: 'martes', is_available: false, blocks: [] },
-    { day: 'miercoles', is_available: false, blocks: [] },
-    { day: 'jueves', is_available: false, blocks: [] },
-    { day: 'viernes', is_available: false, blocks: [] },
-    { day: 'sabado', is_available: false, blocks: [] },
-    { day: 'domingo', is_available: false, blocks: [] },
-  ]
-
-  // Si hay horarios, llenar los días
-  if (availability && availability.length > 0) {
-    availability.forEach((slot: any) => {
-      const dayIndex = newSchedule.findIndex(d => d.day === slot.day_of_week)
-      if (dayIndex !== -1) {
-        newSchedule[dayIndex].blocks.push({
-          id: slot.id,
-          start_time: slot.start_time,
-          end_time: slot.end_time
-        })
-        newSchedule[dayIndex].is_available = true
-      }
-    })
-  }
-
-  // Actualizar el estado SIEMPRE (incluso si está vacío)
-  setSchedule(newSchedule)
-}
 
   const toggleDayAvailability = async (day: DayOfWeek) => {
     const dayData = schedule.find(d => d.day === day)
@@ -193,6 +193,16 @@ const loadSchedule = async (userId: string) => {
     }, 0)
   }
 
+  const calculateDaySlots = (day: DaySchedule): number => {
+    if (!userData?.duracion_cita) return 0
+    
+    return day.blocks.reduce((total, block) => {
+      const durationMinutes = timeToMinutes(block.end_time) - timeToMinutes(block.start_time)
+      const slots = Math.floor(durationMinutes / userData.duracion_cita)
+      return total + slots
+    }, 0)
+  }
+
   const getWeekStats = () => {
     const totalMinutes = schedule.reduce((sum, day) => sum + calculateDayHours(day), 0)
     const totalHours = totalMinutes / 60
@@ -208,6 +218,19 @@ const loadSchedule = async (userId: string) => {
     }
   }
 
+  const getWeekSlotsStats = () => {
+    if (!userData?.duracion_cita) return { totalSlots: 0, avgSlotsPerDay: '0' }
+    
+    const totalSlots = schedule.reduce((sum, day) => sum + calculateDaySlots(day), 0)
+    const activeDays = schedule.filter(d => d.is_available).length
+    const avgSlotsPerDay = activeDays > 0 ? totalSlots / activeDays : 0
+
+    return {
+      totalSlots,
+      avgSlotsPerDay: avgSlotsPerDay.toFixed(1)
+    }
+  }
+
   const applyWorkWeekTemplate = async () => {
     const confirmed = confirm(
       '¿Aplicar horario de oficina?\n\nLunes a Viernes: 09:00 - 18:00 (con pausa 13:00 - 15:00)\nSábado y Domingo: Cerrado\n\nEsto eliminará todos los horarios actuales.'
@@ -218,7 +241,6 @@ const loadSchedule = async (userId: string) => {
     setSaving(true)
 
     try {
-      // Eliminar todos los horarios existentes
       const allBlockIds = schedule.flatMap(d => d.blocks.map(b => b.id))
       if (allBlockIds.length > 0) {
         await supabase
@@ -227,19 +249,16 @@ const loadSchedule = async (userId: string) => {
           .in('id', allBlockIds)
       }
 
-      // Crear horarios de oficina (Lun-Vie)
       const workDays: DayOfWeek[] = ['lunes', 'martes', 'miercoles', 'jueves', 'viernes']
       const newBlocks = []
 
       for (const day of workDays) {
-        // Bloque mañana
         newBlocks.push({
           user_id: session.user.id,
           day_of_week: day,
           start_time: '09:00',
           end_time: '13:00'
         })
-        // Bloque tarde
         newBlocks.push({
           user_id: session.user.id,
           day_of_week: day,
@@ -623,6 +642,7 @@ const loadSchedule = async (userId: string) => {
 
   const selectedDayData = getSelectedDaySchedule()
   const stats = getWeekStats()
+  const slotsStats = getWeekSlotsStats()
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -683,7 +703,7 @@ const loadSchedule = async (userId: string) => {
         </div>
 
         {/* Stats Resumidas */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <p className="text-sm text-gray-600 mb-1">Total Semanal</p>
             <p className="text-2xl font-bold text-gray-900">{stats.totalHours}h</p>
@@ -699,6 +719,11 @@ const loadSchedule = async (userId: string) => {
           <div className="bg-white p-4 rounded-lg border border-gray-200">
             <p className="text-sm text-gray-600 mb-1">Total Bloques</p>
             <p className="text-2xl font-bold text-gray-900">{stats.totalBlocks}</p>
+          </div>
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <p className="text-sm text-gray-600 mb-1">Capacidad Semanal</p>
+            <p className="text-2xl font-bold text-gray-900">{slotsStats.totalSlots}</p>
+            <p className="text-xs text-gray-500 mt-1">citas disponibles</p>
           </div>
         </div>
 
@@ -768,23 +793,33 @@ const loadSchedule = async (userId: string) => {
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {day.blocks.map((block) => (
-                              <div
-                                key={block.id}
-                                className="bg-blue-50 border border-blue-200 rounded px-2 py-1.5 text-xs cursor-pointer hover:bg-blue-100 transition"
-                                onClick={() => {
-                                  setSelectedDay(day.day)
-                                  setViewMode('list')
-                                }}
-                              >
-                                <p className="font-medium text-blue-900">
-                                  {block.start_time}
-                                </p>
-                                <p className="text-blue-700">
-                                  {block.end_time}
-                                </p>
-                              </div>
-                            ))}
+                            {day.blocks.map((block) => {
+                              const blockMinutes = timeToMinutes(block.end_time) - timeToMinutes(block.start_time)
+                              const slots = userData?.duracion_cita ? Math.floor(blockMinutes / userData.duracion_cita) : 0
+                              
+                              return (
+                                <div
+                                  key={block.id}
+                                  className="bg-blue-50 border border-blue-200 rounded px-2 py-1.5 text-xs cursor-pointer hover:bg-blue-100 transition"
+                                  onClick={() => {
+                                    setSelectedDay(day.day)
+                                    setViewMode('list')
+                                  }}
+                                >
+                                  <p className="font-medium text-blue-900">
+                                    {block.start_time}
+                                  </p>
+                                  <p className="text-blue-700">
+                                    {block.end_time}
+                                  </p>
+                                  {slots > 0 && (
+                                    <p className="text-blue-600 mt-1 font-semibold">
+                                      {slots} {slots === 1 ? 'cita' : 'citas'}
+                                    </p>
+                                  )}
+                                </div>
+                              )
+                            })}
                             <button
                               onClick={() => {
                                 setSelectedDay(day.day)
@@ -801,13 +836,29 @@ const loadSchedule = async (userId: string) => {
                     ))}
                   </tr>
                   <tr className="bg-gray-50 border-t border-gray-200">
-                    {schedule.map((day) => (
-                      <td key={day.day} className="px-4 py-2 text-center border-r border-gray-100 last:border-r-0">
-                        <p className="text-xs font-medium text-gray-600">
-                          {day.is_available ? `${(calculateDayHours(day) / 60).toFixed(1)}h` : '—'}
-                        </p>
-                      </td>
-                    ))}
+                    {schedule.map((day) => {
+                      const hours = (calculateDayHours(day) / 60).toFixed(1)
+                      const slots = calculateDaySlots(day)
+                      
+                      return (
+                        <td key={day.day} className="px-4 py-2 text-center border-r border-gray-100 last:border-r-0">
+                          {day.is_available ? (
+                            <div>
+                              <p className="text-xs font-medium text-gray-600">
+                                {hours}h
+                              </p>
+                              {slots > 0 && (
+                                <p className="text-xs text-blue-600">
+                                  {slots} citas
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400">—</p>
+                          )}
+                        </td>
+                      )
+                    })}
                   </tr>
                 </tbody>
               </table>
@@ -957,41 +1008,53 @@ const loadSchedule = async (userId: string) => {
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {selectedDayData.blocks.map((block) => (
-                        <div 
-                          key={block.id}
-                          className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition"
-                        >
-                          <div className="flex items-center gap-3">
-                            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="font-medium text-gray-900">
-                              {block.start_time} - {block.end_time}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => openEditModal(block)}
-                              className="p-2 text-gray-400 hover:text-blue-500 rounded transition"
-                              title="Editar"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      {selectedDayData.blocks.map((block) => {
+                        const blockMinutes = timeToMinutes(block.end_time) - timeToMinutes(block.start_time)
+                        const slots = userData?.duracion_cita ? Math.floor(blockMinutes / userData.duracion_cita) : 0
+                        
+                        return (
+                          <div 
+                            key={block.id}
+                            className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-gray-300 transition"
+                          >
+                            <div className="flex items-center gap-3">
+                              <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteBlock(block.id)}
-                              className="p-2 text-gray-400 hover:text-red-500 rounded transition"
-                              title="Eliminar"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
+                              <div>
+                                <span className="font-medium text-gray-900">
+                                  {block.start_time} - {block.end_time}
+                                </span>
+                                {slots > 0 && (
+                                  <p className="text-sm text-gray-600 mt-0.5">
+                                    {slots} {slots === 1 ? 'cita disponible' : 'citas disponibles'}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button 
+                                onClick={() => openEditModal(block)}
+                                className="p-2 text-gray-400 hover:text-blue-500 rounded transition"
+                                title="Editar"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteBlock(block.id)}
+                                className="p-2 text-gray-400 hover:text-red-500 rounded transition"
+                                title="Eliminar"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )
+                      })}
                       
                       <button 
                         onClick={openAddModal}
@@ -1011,7 +1074,7 @@ const loadSchedule = async (userId: string) => {
 
       </main>
 
-      {/* Modal Agregar/Editar Horario */}
+      {/* Modales (sin cambios - exactamente iguales) */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
@@ -1102,7 +1165,6 @@ const loadSchedule = async (userId: string) => {
         </div>
       )}
 
-      {/* Modal Copiar Horarios */}
       {showCopyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
