@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 type CalendarioPublicoProps = {
   negocioId: string
   colorPrimario: string
+  onDateSelect: (date: Date | null) => void  // ← AGREGAR ESTA LÍNEA
 }
 
 type Availability = {
@@ -21,7 +22,7 @@ type Exception = {
   is_closed: boolean
 }
 
-export default function CalendarioPublico({ negocioId, colorPrimario }: CalendarioPublicoProps) {
+export default function CalendarioPublico({ negocioId, colorPrimario, onDateSelect }: CalendarioPublicoProps) {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [availability, setAvailability] = useState<Availability[]>([])
   const [exceptions, setExceptions] = useState<Exception[]>([])
@@ -142,13 +143,14 @@ export default function CalendarioPublico({ negocioId, colorPrimario }: Calendar
     return !isDayAvailable(date)
   }
 
-  // Handler para selección de fecha
-  const handleDateChange = (value: Date | Date[] | null) => {
-    if (value instanceof Date) {
-      console.log('📅 Fecha seleccionada:', value)
-      setSelectedDate(value)
-    }
+// Handler para selección de fecha
+const handleDateChange = (value: Date | Date[] | null) => {
+  if (value instanceof Date) {
+    console.log('📅 Fecha seleccionada:', value)
+    setSelectedDate(value)
+    onDateSelect(value)  // ← AGREGAR ESTA LÍNEA
   }
+}
 
   if (loading) {
     return (

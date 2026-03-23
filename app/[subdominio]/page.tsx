@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import CalendarioPublico from './components/CalendarioPublico'
+import SlotsDisponibles from './components/SlotsDisponibles'
+
 
 type Negocio = {
   id: string
@@ -21,6 +23,7 @@ export default function PaginaPublicaNegocio() {
   const [negocio, setNegocio] = useState<Negocio | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null)
 
   useEffect(() => {
     const loadNegocio = async () => {
@@ -169,11 +172,25 @@ export default function PaginaPublicaNegocio() {
             </p>
           </div>
 
-          {/* Calendario */}
-          <CalendarioPublico 
-            negocioId={negocio.id}
-            colorPrimario={negocio.color_primario}
-          />
+{/* Calendario */}
+<CalendarioPublico 
+  negocioId={negocio.id}
+  colorPrimario={negocio.color_primario}
+  onDateSelect={setSelectedDate}
+/>
+
+{/* Slots disponibles */}
+{selectedDate && (
+  <SlotsDisponibles
+    selectedDate={selectedDate}
+    negocioId={negocio.id}
+    colorPrimario={negocio.color_primario}
+  />
+)}
+
+
+
+
         </div>
 
         {/* Info adicional */}
