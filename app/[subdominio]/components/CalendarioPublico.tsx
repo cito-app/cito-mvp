@@ -306,7 +306,8 @@ export default function CalendarioPublico({
           Selecciona una fecha
         </h3>
         <p className="text-sm text-gray-600">
-          Los días resaltados en verde tienen horarios disponibles
+          Los días resaltados en verde tienen horarios disponibles.
+          <span className="hidden sm:inline"> Haz clic en uno para ver los horarios.</span>
         </p>
         <p className="text-xs text-gray-500 mt-1">
           📅 Puedes agendar hasta 90 días de anticipación

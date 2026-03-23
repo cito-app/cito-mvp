@@ -112,6 +112,27 @@ export default function PaginaPublicaNegocio() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
+      <style jsx global>{`
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      .animate-fadeIn {
+        animation: fadeIn 0.3s ease-out;
+      }
+    `}</style>
+
+
+
+
+
       <header 
         className="bg-white border-b border-gray-200 shadow-sm"
         style={{ 
@@ -147,6 +168,11 @@ export default function PaginaPublicaNegocio() {
             </div>
           </div>
         </div>
+
+        
+
+
+
       </header>
 
       {/* Main Content */}

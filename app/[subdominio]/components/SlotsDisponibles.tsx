@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 type SlotsDisponiblesProps = {
@@ -36,10 +36,12 @@ export default function SlotsDisponibles({
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [duracionCita, setDuracionCita] = useState<number>(60)
+  const slotsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const loadSlots = async () => {
       setLoading(true)
+      setSelectedSlot(null) // Limpiar selección al cambiar día
       
       try {
         console.log('🕐 Calculando slots para fecha:', selectedDate)
@@ -114,6 +116,18 @@ export default function SlotsDisponibles({
 
     loadSlots()
   }, [selectedDate, negocioId])
+
+  // Scroll automático cuando se cargan los slots
+  useEffect(() => {
+    if (slots.length > 0 && slotsRef.current) {
+      setTimeout(() => {
+        slotsRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'nearest' 
+        })
+      }, 100)
+    }
+  }, [slots])
 
   // Calcular slots por bloques de tiempo
   const calculateSlots = (
@@ -227,13 +241,38 @@ export default function SlotsDisponibles({
     )
   }
 
+  // Verificar si todos los slots están no disponibles (día lleno)
+  const availableSlots = slots.filter(s => s.available)
+  if (availableSlots.length === 0 && slots.length > 0) {
+    return (
+      <div className="mt-6 bg-white border border-orange-200 rounded-lg p-6">
+        <div className="text-center py-8">
+          <div className="text-5xl mb-4">⏰</div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Día completamente ocupado
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            {selectedDate.toLocaleDateString('es-MX', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long'
+            })}
+          </p>
+          <p className="text-xs text-gray-500">
+            Todos los horarios ya pasaron o están reservados. Selecciona otro día.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="mt-6">
+    <div className="mt-6" ref={slotsRef}>
       <div className="mb-4">
         <h3 className="text-lg font-bold text-gray-900 mb-1">
           Horarios disponibles
           <span className="ml-2 text-sm font-normal text-gray-600">
-            ({slots.filter(s => s.available).length} disponibles)
+            ({availableSlots.length} disponibles)
           </span>
         </h3>
         <p className="text-sm text-gray-600">
@@ -252,15 +291,17 @@ export default function SlotsDisponibles({
       </div>
 
       {/* Grid de slots */}
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 animate-fadeIn">
         {slots.map((slot) => (
           <button
             key={slot.time}
             onClick={() => handleSelectSlot(slot.time)}
             disabled={!slot.available}
+            aria-label={`Agendar cita a las ${formatTime(slot.time)}`}
+            aria-pressed={selectedSlot === slot.time}
             className={`
               px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
-              transform hover:scale-105 active:scale-95
+              transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2
               ${selectedSlot === slot.time
                 ? 'text-white shadow-lg scale-105'
                 : slot.available
@@ -270,7 +311,11 @@ export default function SlotsDisponibles({
             `}
             style={
               selectedSlot === slot.time
-                ? { backgroundColor: colorPrimario, borderColor: colorPrimario }
+                ? { 
+                    backgroundColor: colorPrimario, 
+                    borderColor: colorPrimario,
+                    boxShadow: `0 4px 12px ${colorPrimario}40`
+                  }
                 : {}
             }
           >
@@ -298,8 +343,12 @@ export default function SlotsDisponibles({
               </p>
             </div>
             <button
-              className="px-6 py-2.5 rounded-lg text-white font-medium shadow-md hover:shadow-lg transition-all"
-              style={{ backgroundColor: colorPrimario }}
+              className="px-6 py-2.5 rounded-lg text-white font-medium shadow-md hover:shadow-lg transition-all transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2"
+              style={{ 
+                backgroundColor: colorPrimario,
+                boxShadow: `0 4px 12px ${colorPrimario}40`
+              }}
+              aria-label="Continuar con la reserva"
             >
               Continuar →
             </button>
