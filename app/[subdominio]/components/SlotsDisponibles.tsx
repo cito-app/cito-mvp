@@ -40,69 +40,76 @@ export default function SlotsDisponibles({
   useEffect(() => {
     const loadSlots = async () => {
       setLoading(true)
-      console.log('🕐 Calculando slots para fecha:', selectedDate)
+      
+      try {
+        console.log('🕐 Calculando slots para fecha:', selectedDate)
 
-      // Cargar duración de cita del negocio
-      const { data: userData } = await supabase
-        .from('users')
-        .select('duracion_cita')
-        .eq('id', negocioId)
-        .single()
+        // Cargar duración de cita del negocio
+        const { data: userData } = await supabase
+          .from('users')
+          .select('duracion_cita')
+          .eq('id', negocioId)
+          .single()
 
-      const duracion = userData?.duracion_cita || 60
-      setDuracionCita(duracion)
-      console.log('⏱️ Duración de cita:', duracion, 'minutos')
+        const duracion = userData?.duracion_cita || 60
+        setDuracionCita(duracion)
+        console.log('⏱️ Duración de cita:', duracion, 'minutos')
 
-      // Obtener día de la semana
-      const dayNames = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
-      const dayOfWeek = dayNames[selectedDate.getDay()]
-      console.log('📅 Día de la semana:', dayOfWeek)
+        // Obtener día de la semana
+        const dayNames = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado']
+        const dayOfWeek = dayNames[selectedDate.getDay()]
+        console.log('📅 Día de la semana:', dayOfWeek)
 
-      // Verificar si hay excepción para este día
-      const dateStr = selectedDate.toISOString().split('T')[0]
-      const { data: exceptions } = await supabase
-        .from('availability_exceptions')
-        .select('*')
-        .eq('user_id', negocioId)
-        .eq('exception_date', dateStr)
-        .single()
-
-      console.log('🔍 Excepción encontrada:', exceptions)
-
-      let blocksToUse: { start_time: string; end_time: string }[] = []
-
-      if (exceptions) {
-        // Día con excepción
-        if (exceptions.is_closed) {
-          console.log('🔴 Día cerrado por excepción')
-          setSlots([])
-          setLoading(false)
-          return
-        } else if (exceptions.custom_start_time && exceptions.custom_end_time) {
-          // Horario especial
-          console.log('🟡 Horario especial:', exceptions.custom_start_time, '-', exceptions.custom_end_time)
-          blocksToUse = [{
-            start_time: exceptions.custom_start_time,
-            end_time: exceptions.custom_end_time
-          }]
-        }
-      } else {
-        // Horario regular
-        const { data: availability } = await supabase
-          .from('availability')
-          .select('start_time, end_time')
+        // Verificar si hay excepción para este día
+        const dateStr = selectedDate.toISOString().split('T')[0]
+        const { data: exceptions } = await supabase
+          .from('availability_exceptions')
+          .select('*')
           .eq('user_id', negocioId)
-          .eq('day_of_week', dayOfWeek)
+          .eq('exception_date', dateStr)
+          .single()
 
-        console.log('📊 Bloques de horario regular:', availability)
-        blocksToUse = availability || []
+        console.log('🔍 Excepción encontrada:', exceptions)
+
+        let blocksToUse: { start_time: string; end_time: string }[] = []
+
+        if (exceptions) {
+          // Día con excepción
+          if (exceptions.is_closed) {
+            console.log('🔴 Día cerrado por excepción')
+            setSlots([])
+            setLoading(false)
+            return
+          } else if (exceptions.custom_start_time && exceptions.custom_end_time) {
+            // Horario especial
+            console.log('🟡 Horario especial:', exceptions.custom_start_time, '-', exceptions.custom_end_time)
+            blocksToUse = [{
+              start_time: exceptions.custom_start_time,
+              end_time: exceptions.custom_end_time
+            }]
+          }
+        } else {
+          // Horario regular
+          const { data: availability } = await supabase
+            .from('availability')
+            .select('start_time, end_time')
+            .eq('user_id', negocioId)
+            .eq('day_of_week', dayOfWeek)
+
+          console.log('📊 Bloques de horario regular:', availability)
+          blocksToUse = availability || []
+        }
+
+        // Calcular slots
+        const calculatedSlots = calculateSlots(blocksToUse, duracion)
+        console.log('✅ Slots calculados:', calculatedSlots.length)
+        setSlots(calculatedSlots)
+        setLoading(false)
+      } catch (error) {
+        console.error('❌ Error cargando slots:', error)
+        setSlots([])
+        setLoading(false)
       }
-
-      // Calcular slots
-      const calculatedSlots = calculateSlots(blocksToUse, duracion)
-      console.log('✅ Slots calculados:', calculatedSlots.length)
-      setSlots(calculatedSlots)
-      setLoading(false)
     }
 
     loadSlots()
@@ -114,6 +121,12 @@ export default function SlotsDisponibles({
     duration: number
   ): TimeSlot[] => {
     const allSlots: TimeSlot[] = []
+    const now = new Date()
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    
+    // Verificar si la fecha seleccionada es hoy
+    const isToday = selectedDate.getTime() === today.getTime()
 
     blocks.forEach(block => {
       const startMinutes = timeToMinutes(block.start_time)
@@ -123,9 +136,22 @@ export default function SlotsDisponibles({
 
       while (currentMinutes + duration <= endMinutes) {
         const timeStr = minutesToTime(currentMinutes)
+        
+        // Si es hoy, validar que el horario no haya pasado
+        let isAvailable = true
+        if (isToday) {
+          const slotTime = new Date(selectedDate)
+          const [hours, minutes] = timeStr.split(':').map(Number)
+          slotTime.setHours(hours, minutes, 0, 0)
+          
+          // Agregar 30 minutos de buffer (no permitir agendar con menos de 30 min de anticipación)
+          const bufferTime = new Date(now.getTime() + 30 * 60000)
+          isAvailable = slotTime > bufferTime
+        }
+        
         allSlots.push({
           time: timeStr,
-          available: true // Por ahora todos disponibles, después validar con reservas
+          available: isAvailable
         })
         currentMinutes += duration
       }
@@ -167,18 +193,36 @@ export default function SlotsDisponibles({
 
   if (loading) {
     return (
-      <div className="mt-6 flex justify-center py-8">
-        <div className="animate-spin w-6 h-6 border-4 border-gray-300 border-t-blue-500 rounded-full"></div>
+      <div className="mt-6 bg-white border border-gray-200 rounded-lg p-8">
+        <div className="flex flex-col items-center justify-center py-8">
+          <div className="animate-spin w-8 h-8 border-4 border-gray-200 rounded-full mb-4"
+            style={{ borderTopColor: colorPrimario }}
+          ></div>
+          <p className="text-sm text-gray-600">Cargando horarios disponibles...</p>
+        </div>
       </div>
     )
   }
 
   if (slots.length === 0) {
     return (
-      <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <p className="text-sm text-yellow-800">
-          ⚠️ No hay horarios disponibles para este día
-        </p>
+      <div className="mt-6 bg-white border border-gray-200 rounded-lg p-6">
+        <div className="text-center py-8">
+          <div className="text-5xl mb-4">📅</div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            No hay horarios disponibles
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            {selectedDate.toLocaleDateString('es-MX', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long'
+            })}
+          </p>
+          <p className="text-xs text-gray-500">
+            Selecciona otro día o contacta al negocio para más información
+          </p>
+        </div>
       </div>
     )
   }
@@ -188,13 +232,22 @@ export default function SlotsDisponibles({
       <div className="mb-4">
         <h3 className="text-lg font-bold text-gray-900 mb-1">
           Horarios disponibles
+          <span className="ml-2 text-sm font-normal text-gray-600">
+            ({slots.filter(s => s.available).length} disponibles)
+          </span>
         </h3>
         <p className="text-sm text-gray-600">
           {selectedDate.toLocaleDateString('es-MX', {
             weekday: 'long',
             day: 'numeric',
             month: 'long'
-          })} • Duración: {duracionCita} minutos
+          })}
+          {new Date().toDateString() === selectedDate.toDateString() && (
+            <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
+              Hoy
+            </span>
+          )}
+          {' • Duración: '}{duracionCita} minutos
         </p>
       </div>
 
@@ -206,11 +259,12 @@ export default function SlotsDisponibles({
             onClick={() => handleSelectSlot(slot.time)}
             disabled={!slot.available}
             className={`
-              px-3 py-2.5 rounded-lg text-sm font-medium transition-all
+              px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
+              transform hover:scale-105 active:scale-95
               ${selectedSlot === slot.time
-                ? 'text-white shadow-md'
+                ? 'text-white shadow-lg scale-105'
                 : slot.available
-                ? 'bg-white border-2 border-gray-200 text-gray-900 hover:border-gray-300 hover:shadow-sm'
+                ? 'bg-white border-2 border-gray-200 text-gray-900 hover:border-gray-300 hover:shadow-md'
                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
               }
             `}

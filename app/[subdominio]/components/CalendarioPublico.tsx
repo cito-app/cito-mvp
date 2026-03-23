@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase'
 type CalendarioPublicoProps = {
   negocioId: string
   colorPrimario: string
-  onDateSelect: (date: Date | null) => void  // ← AGREGAR ESTA LÍNEA
+  onDateSelect: (date: Date | null) => void
 }
 
 type Availability = {
@@ -22,7 +22,11 @@ type Exception = {
   is_closed: boolean
 }
 
-export default function CalendarioPublico({ negocioId, colorPrimario, onDateSelect }: CalendarioPublicoProps) {
+export default function CalendarioPublico({ 
+  negocioId, 
+  colorPrimario,
+  onDateSelect
+}: CalendarioPublicoProps) {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [availability, setAvailability] = useState<Availability[]>([])
   const [exceptions, setExceptions] = useState<Exception[]>([])
@@ -143,14 +147,14 @@ export default function CalendarioPublico({ negocioId, colorPrimario, onDateSele
     return !isDayAvailable(date)
   }
 
-// Handler para selección de fecha
-const handleDateChange = (value: Date | Date[] | null) => {
-  if (value instanceof Date) {
-    console.log('📅 Fecha seleccionada:', value)
-    setSelectedDate(value)
-    onDateSelect(value)  // ← AGREGAR ESTA LÍNEA
+  // Handler para selección de fecha
+  const handleDateChange = (value: Date | Date[] | null) => {
+    if (value instanceof Date) {
+      console.log('📅 Fecha seleccionada:', value)
+      setSelectedDate(value)
+      onDateSelect(value)
+    }
   }
-}
 
   if (loading) {
     return (
@@ -304,6 +308,9 @@ const handleDateChange = (value: Date | Date[] | null) => {
         <p className="text-sm text-gray-600">
           Los días resaltados en verde tienen horarios disponibles
         </p>
+        <p className="text-xs text-gray-500 mt-1">
+          📅 Puedes agendar hasta 90 días de anticipación
+        </p>
         
         {availability.length === 0 && (
           <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
@@ -317,6 +324,7 @@ const handleDateChange = (value: Date | Date[] | null) => {
         value={selectedDate}
         locale="es-MX"
         minDate={new Date()}
+        maxDate={new Date(new Date().setDate(new Date().getDate() + 90))}
         tileClassName={tileClassName}
         tileDisabled={tileDisabled}
         next2Label={null}
@@ -342,23 +350,6 @@ const handleDateChange = (value: Date | Date[] | null) => {
           <span className="text-gray-700">Hoy</span>
         </div>
       </div>
-
-      {selectedDate && (
-        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-900">
-            <strong>Fecha seleccionada:</strong>{' '}
-            {selectedDate.toLocaleDateString('es-MX', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric'
-            })}
-          </p>
-          <p className="text-xs text-blue-700 mt-1">
-            En el siguiente paso verás los horarios disponibles para este día
-          </p>
-        </div>
-      )}
     </div>
   )
 }
