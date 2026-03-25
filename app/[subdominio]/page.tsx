@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import CalendarioPublico from './components/CalendarioPublico'
 import SlotsDisponibles from './components/SlotsDisponibles'
-
+import FormularioReserva from './components/FormularioReserva'
 
 type Negocio = {
   id: string
@@ -24,6 +24,8 @@ export default function PaginaPublicaNegocio() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
+  const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const [showForm, setShowForm] = useState(false)
 
   useEffect(() => {
     const loadNegocio = async () => {
@@ -76,6 +78,18 @@ export default function PaginaPublicaNegocio() {
     'otro': 'Servicios Profesionales'
   }
 
+  // Handler para continuar al formulario
+  const handleContinue = (time: string) => {
+    setSelectedTime(time)
+    setShowForm(true)
+  }
+
+  // Handler para volver del formulario
+  const handleBackFromForm = () => {
+    setShowForm(false)
+    setSelectedTime(null)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -111,28 +125,24 @@ export default function PaginaPublicaNegocio() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <style jsx global>{`
-      @keyframes fadeIn {
-        from {
-          opacity: 0;
-          transform: translateY(10px);
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
-        to {
-          opacity: 1;
-          transform: translateY(0);
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
         }
-      }
-      
-      .animate-fadeIn {
-        animation: fadeIn 0.3s ease-out;
-      }
-    `}</style>
+      `}</style>
 
-
-
-
-
+      {/* Header */}
       <header 
         className="bg-white border-b border-gray-200 shadow-sm"
         style={{ 
@@ -168,11 +178,6 @@ export default function PaginaPublicaNegocio() {
             </div>
           </div>
         </div>
-
-        
-
-
-
       </header>
 
       {/* Main Content */}
@@ -198,25 +203,34 @@ export default function PaginaPublicaNegocio() {
             </p>
           </div>
 
-{/* Calendario */}
-<CalendarioPublico 
-  negocioId={negocio.id}
-  colorPrimario={negocio.color_primario}
-  onDateSelect={setSelectedDate}
-/>
+          {/* Calendario */}
+          <CalendarioPublico 
+            negocioId={negocio.id}
+            colorPrimario={negocio.color_primario}
+            onDateSelect={setSelectedDate}
+          />
 
-{/* Slots disponibles */}
-{selectedDate && (
-  <SlotsDisponibles
-    selectedDate={selectedDate}
-    negocioId={negocio.id}
-    colorPrimario={negocio.color_primario}
-  />
-)}
+          {/* Slots disponibles */}
+          {selectedDate && !showForm && (
+            <SlotsDisponibles
+              selectedDate={selectedDate}
+              negocioId={negocio.id}
+              colorPrimario={negocio.color_primario}
+              onContinue={handleContinue}
+            />
+          )}
 
-
-
-
+          {/* Formulario de reserva */}
+          {showForm && selectedDate && selectedTime && (
+            <FormularioReserva
+              selectedDate={selectedDate}
+              selectedTime={selectedTime}
+              duracionCita={60}
+              negocioNombre={negocio.nombre_negocio}
+              colorPrimario={negocio.color_primario}
+              onBack={handleBackFromForm}
+            />
+          )}
         </div>
 
         {/* Info adicional */}
@@ -258,4 +272,4 @@ export default function PaginaPublicaNegocio() {
       </footer>
     </div>
   )
-}        
+}

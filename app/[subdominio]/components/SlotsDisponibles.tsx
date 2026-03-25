@@ -7,6 +7,7 @@ type SlotsDisponiblesProps = {
   selectedDate: Date
   negocioId: string
   colorPrimario: string
+  onContinue: (time: string) => void
 }
 
 type TimeSlot = {
@@ -30,7 +31,8 @@ type Exception = {
 export default function SlotsDisponibles({ 
   selectedDate, 
   negocioId,
-  colorPrimario 
+  colorPrimario,
+  onContinue
 }: SlotsDisponiblesProps) {
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
@@ -205,6 +207,13 @@ export default function SlotsDisponibles({
     console.log('✅ Slot seleccionado:', time)
   }
 
+  // Handler para continuar al formulario
+  const handleContinue = () => {
+    if (selectedSlot) {
+      onContinue(selectedSlot)
+    }
+  }
+
   if (loading) {
     return (
       <div className="mt-6 bg-white border border-gray-200 rounded-lg p-8">
@@ -343,6 +352,7 @@ export default function SlotsDisponibles({
               </p>
             </div>
             <button
+              onClick={handleContinue}
               className="px-6 py-2.5 rounded-lg text-white font-medium shadow-md hover:shadow-lg transition-all transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2"
               style={{ 
                 backgroundColor: colorPrimario,
