@@ -17,6 +17,15 @@ type ValidationError = {
   telefono: string
 }
 
+type ReservaData = {
+  nombre: string
+  email: string
+  telefono: string
+  fecha: Date
+  hora: string
+  duracion: number
+}
+
 export default function FormularioReserva({
   selectedDate,
   selectedTime,
@@ -29,6 +38,8 @@ export default function FormularioReserva({
   const [email, setEmail] = useState('')
   const [telefono, setTelefono] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [reservaConfirmada, setReservaConfirmada] = useState<ReservaData | null>(null)
   
   // Estados de validación
   const [touched, setTouched] = useState({
@@ -45,13 +56,9 @@ export default function FormularioReserva({
 
   // Función para formatear teléfono mexicano (XXX XXX XXXX)
   const formatPhoneNumber = (value: string): string => {
-    // Eliminar todo lo que no sea número
     const numbers = value.replace(/\D/g, '')
-    
-    // Limitar a 10 dígitos
     const limited = numbers.slice(0, 10)
     
-    // Aplicar formato según la cantidad de dígitos
     if (limited.length <= 3) {
       return limited
     } else if (limited.length <= 6) {
@@ -74,7 +81,6 @@ export default function FormularioReserva({
     if (value.trim().length < 3) {
       return 'El nombre debe tener al menos 3 caracteres'
     }
-    // Permitir solo letras, espacios, y acentos
     const nameRegex = /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/
     if (!nameRegex.test(value)) {
       return 'El nombre solo debe contener letras'
@@ -96,7 +102,6 @@ export default function FormularioReserva({
 
   // Validar teléfono
   const validateTelefono = (value: string): string => {
-    // Obtener solo números
     const numbers = getPhoneNumbers(value)
     
     if (!numbers) {
@@ -199,29 +204,39 @@ export default function FormularioReserva({
     // Obtener solo números del teléfono para guardar
     const telefonoLimpio = getPhoneNumbers(telefono)
     
-    // Por ahora solo mostramos los datos en consola
-    console.log('📝 Datos del formulario:', {
+    const reservaData: ReservaData = {
       nombre,
       email,
-      telefono: telefonoLimpio, // Solo números
-      telefonoFormateado: telefono, // Con formato para display
+      telefono: telefonoLimpio,
       fecha: selectedDate,
       hora: selectedTime,
       duracion: duracionCita
-    })
+    }
+    
+    // Por ahora solo mostramos los datos en consola
+    console.log('📝 Datos del formulario:', reservaData)
 
-    // Simular proceso
+    // Simular proceso de guardado
     setTimeout(() => {
-      alert('¡Reserva lista! (Por ahora solo simulación - en S9 se guardará en BD)')
+      setReservaConfirmada(reservaData)
+      setShowConfirmation(true)
       setIsSubmitting(false)
-      
-      // Limpiar formulario
-      setNombre('')
-      setEmail('')
-      setTelefono('')
-      setTouched({ nombre: false, email: false, telefono: false })
-      setErrors({ nombre: '', email: '', telefono: '' })
-    }, 1000)
+    }, 1500)
+  }
+
+  // Handler para nueva reserva
+  const handleNuevaReserva = () => {
+    // Limpiar todo
+    setNombre('')
+    setEmail('')
+    setTelefono('')
+    setTouched({ nombre: false, email: false, telefono: false })
+    setErrors({ nombre: '', email: '', telefono: '' })
+    setShowConfirmation(false)
+    setReservaConfirmada(null)
+    
+    // Volver al calendario
+    onBack()
   }
 
   // Determinar clase de border por estado
@@ -241,6 +256,159 @@ export default function FormularioReserva({
     return 'border-gray-300 focus:border-blue-500'
   }
 
+  // Si estamos en confirmación, mostrar pantalla de éxito
+  if (showConfirmation && reservaConfirmada) {
+    return (
+      <div className="mt-6 animate-fadeIn">
+        {/* Animación de éxito */}
+        <div className="bg-white rounded-xl shadow-lg border-2 p-8 md:p-12 text-center"
+          style={{ borderColor: `${colorPrimario}40` }}
+        >
+          {/* Checkmark animado */}
+          <div className="mb-6">
+            <div 
+              className="w-20 h-20 mx-auto rounded-full flex items-center justify-center animate-bounce"
+              style={{ backgroundColor: `${colorPrimario}20` }}
+            >
+              <div 
+                className="w-16 h-16 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: colorPrimario }}
+              >
+                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          {/* Título */}
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">
+            ¡Reserva Confirmada!
+          </h2>
+          <p className="text-lg text-gray-600 mb-8">
+            Tu cita ha sido agendada exitosamente
+          </p>
+
+          {/* Resumen de la reserva */}
+          <div className="bg-gray-50 rounded-lg p-6 mb-6 text-left max-w-md mx-auto">
+            <h3 className="text-sm font-semibold text-gray-500 uppercase mb-4">
+              Detalles de tu cita
+            </h3>
+            
+            <div className="space-y-3">
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">📍</span>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Lugar</p>
+                  <p className="font-medium text-gray-900">{negocioNombre}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">📅</span>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Fecha</p>
+                  <p className="font-medium text-gray-900">
+                    {reservaConfirmada.fecha.toLocaleDateString('es-MX', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric'
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">⏰</span>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Hora</p>
+                  <p className="font-medium text-gray-900">
+                    {formatTime(reservaConfirmada.hora)} ({reservaConfirmada.duracion} min)
+                  </p>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-200 pt-3 mt-3">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">👤</span>
+                  <div className="flex-1">
+                    <p className="text-xs text-gray-500">Nombre</p>
+                    <p className="font-medium text-gray-900">{reservaConfirmada.nombre}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">📧</span>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Email</p>
+                  <p className="font-medium text-gray-900 break-all">{reservaConfirmada.email}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">📱</span>
+                <div className="flex-1">
+                  <p className="text-xs text-gray-500">Teléfono</p>
+                  <p className="font-medium text-gray-900">{formatPhoneNumber(reservaConfirmada.telefono)}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Información adicional */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <p className="text-sm text-blue-800">
+              <strong>📲 Recibirás un SMS de confirmación</strong> a tu teléfono con todos los detalles de tu cita.
+            </p>
+          </div>
+
+          {/* Recordatorio */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-8">
+            <p className="text-sm text-yellow-800">
+              <strong>⏰ Recordatorio:</strong> Recibirás un mensaje 24 horas antes de tu cita. Si necesitas cancelar o reprogramar, responde al SMS.
+            </p>
+          </div>
+
+          {/* Botones de acción */}
+          <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
+            <button
+              onClick={handleNuevaReserva}
+              className="flex-1 px-6 py-3 border-2 rounded-lg font-medium transition-all hover:bg-gray-50"
+              style={{ 
+                borderColor: colorPrimario,
+                color: colorPrimario
+              }}
+            >
+              📅 Agendar otra cita
+            </button>
+            <button
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="flex-1 px-6 py-3 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all"
+              style={{ backgroundColor: colorPrimario }}
+            >
+              ✓ Entendido
+            </button>
+          </div>
+
+          {/* Nota final */}
+          <p className="mt-8 text-xs text-gray-500">
+            Reserva #TEMP-{Date.now().toString().slice(-6)} • {new Date().toLocaleTimeString('es-MX')}
+          </p>
+        </div>
+
+        {/* Mensaje motivacional */}
+        <div className="mt-4 text-center">
+          <p className="text-sm text-gray-600">
+            ¡Gracias por confiar en nosotros! 🎉
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  // Formulario normal
   return (
     <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 animate-fadeIn">
       {/* Header */}
@@ -301,37 +469,38 @@ export default function FormularioReserva({
           >
             Nombre completo <span className="text-red-500">*</span>
           </label>
-          <div className="relative">
-            <input
-              type="text"
-              id="nombre"
-              value={nombre}
-              onChange={(e) => setNombre(e.target.value)}
-              onBlur={() => handleBlur('nombre')}
-              placeholder="Ej: Juan Pérez García"
-              className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('nombre', nombre)}`}
-              style={{ 
-                focusRingColor: errors.nombre ? '#ef4444' : touched.nombre && nombre ? '#10b981' : colorPrimario 
-              }}
-            />
-            {/* Icono de estado */}
-            {touched.nombre && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {errors.nombre ? (
-                  <span className="text-red-500 text-xl">✕</span>
-                ) : nombre.trim() ? (
-                  <span className="text-green-500 text-xl">✓</span>
-                ) : null}
-              </div>
-            )}
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <input
+                type="text"
+                id="nombre"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                onBlur={() => handleBlur('nombre')}
+                placeholder="Ej: Juan Pérez García"
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('nombre', nombre)}`}
+                style={{ 
+                  focusRingColor: errors.nombre ? '#ef4444' : touched.nombre && nombre ? '#10b981' : colorPrimario 
+                }}
+              />
+            </div>
+            <div className="w-6 flex items-center justify-center">
+              {touched.nombre && (
+                <>
+                  {errors.nombre ? (
+                    <span className="text-red-500 text-xl">✕</span>
+                  ) : nombre.trim() ? (
+                    <span className="text-green-500 text-xl">✓</span>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
-          {/* Mensaje de error */}
           {touched.nombre && errors.nombre && (
             <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
               <span>⚠️</span> {errors.nombre}
             </p>
           )}
-          {/* Mensaje de éxito */}
           {touched.nombre && !errors.nombre && nombre.trim() && (
             <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
               <span>✓</span> Nombre válido
@@ -347,41 +516,43 @@ export default function FormularioReserva({
           >
             Correo electrónico <span className="text-red-500">*</span>
           </label>
-          <div className="relative">
-            <input
-              type="email"
-              id="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={() => handleBlur('email')}
-              placeholder="Ej: juan.perez@email.com"
-              className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('email', email)}`}
-            />
-            {/* Icono de estado */}
-            {touched.email && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {errors.email ? (
-                  <span className="text-red-500 text-xl">✕</span>
-                ) : email.trim() ? (
-                  <span className="text-green-500 text-xl">✓</span>
-                ) : null}
-              </div>
-            )}
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <input
+                type="email"
+                id="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => handleBlur('email')}
+                placeholder="Ej: juan.perez@email.com"
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('email', email)}`}
+              />
+            </div>
+            <div className="w-6 flex items-center justify-center">
+              {touched.email && (
+                <>
+                  {errors.email ? (
+                    <span className="text-red-500 text-xl">✕</span>
+                  ) : email.trim() ? (
+                    <span className="text-green-500 text-xl">✓</span>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
-          {/* Mensaje de error */}
           {touched.email && errors.email && (
             <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
               <span>⚠️</span> {errors.email}
             </p>
           )}
-          {/* Mensaje de éxito */}
           {touched.email && !errors.email && email.trim() && (
             <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
               <span>✓</span> Email válido
             </p>
           )}
         </div>
-{/* Teléfono con máscara */}
+
+        {/* Teléfono con máscara */}
         <div>
           <label 
             htmlFor="telefono" 
@@ -403,7 +574,6 @@ export default function FormularioReserva({
                 inputMode="numeric"
               />
             </div>
-            {/* Icono de estado FUERA del input */}
             <div className="w-6 flex items-center justify-center">
               {touched.telefono && (
                 <>
@@ -416,19 +586,16 @@ export default function FormularioReserva({
               )}
             </div>
           </div>
-          {/* Mensaje de error */}
           {touched.telefono && errors.telefono && (
             <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
               <span>⚠️</span> {errors.telefono}
             </p>
           )}
-          {/* Mensaje de éxito */}
           {touched.telefono && !errors.telefono && telefono.trim() && (
             <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
               <span>✓</span> Teléfono válido
             </p>
           )}
-          {/* Helper text */}
           {!touched.telefono && (
             <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1">
               <span>📱</span> Formato: XXX XXX XXXX (10 dígitos)
