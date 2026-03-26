@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 type FormularioReservaProps = {
   selectedDate: Date
@@ -40,6 +40,7 @@ export default function FormularioReserva({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [reservaConfirmada, setReservaConfirmada] = useState<ReservaData | null>(null)
+  const [submitProgress, setSubmitProgress] = useState(0)
   
   // Estados de validación
   const [touched, setTouched] = useState({
@@ -53,6 +54,28 @@ export default function FormularioReserva({
     email: '',
     telefono: ''
   })
+
+  // Refs para auto-focus
+  const nombreInputRef = useRef<HTMLInputElement>(null)
+
+  // Auto-focus en primer campo al montar
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      nombreInputRef.current?.focus()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [])
+
+  // Handler de teclado (Enter para submit, Escape para cancelar)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isSubmitting) {
+        onBack()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isSubmitting, onBack])
 
   // Función para formatear teléfono mexicano (XXX XXX XXXX)
   const formatPhoneNumber = (value: string): string => {
@@ -195,11 +218,12 @@ export default function FormularioReserva({
 
     // Si hay errores, no continuar
     if (nombreError || emailError || telefonoError) {
-      alert('Por favor corrige los errores antes de continuar')
+      // Shake animation en el primer campo con error
       return
     }
 
     setIsSubmitting(true)
+    setSubmitProgress(0)
     
     // Obtener solo números del teléfono para guardar
     const telefonoLimpio = getPhoneNumbers(telefono)
@@ -213,20 +237,35 @@ export default function FormularioReserva({
       duracion: duracionCita
     }
     
-    // Por ahora solo mostramos los datos en consola
     console.log('📝 Datos del formulario:', reservaData)
+
+    // Simular progress bar
+    const progressInterval = setInterval(() => {
+      setSubmitProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval)
+          return 90
+        }
+        return prev + 10
+      })
+    }, 150)
 
     // Simular proceso de guardado
     setTimeout(() => {
-      setReservaConfirmada(reservaData)
-      setShowConfirmation(true)
-      setIsSubmitting(false)
+      clearInterval(progressInterval)
+      setSubmitProgress(100)
+      
+      setTimeout(() => {
+        setReservaConfirmada(reservaData)
+        setShowConfirmation(true)
+        setIsSubmitting(false)
+        setSubmitProgress(0)
+      }, 300)
     }, 1500)
   }
 
   // Handler para nueva reserva
   const handleNuevaReserva = () => {
-    // Limpiar todo
     setNombre('')
     setEmail('')
     setTelefono('')
@@ -234,8 +273,6 @@ export default function FormularioReserva({
     setErrors({ nombre: '', email: '', telefono: '' })
     setShowConfirmation(false)
     setReservaConfirmada(null)
-    
-    // Volver al calendario
     onBack()
   }
 
@@ -259,7 +296,36 @@ export default function FormularioReserva({
   // Si estamos en confirmación, mostrar pantalla de éxito
   if (showConfirmation && reservaConfirmada) {
     return (
-      <div className="mt-6 animate-fadeIn">
+      <div className="mt-6 animate-slideUp">
+        <style jsx>{`
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(20px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .animate-slideUp {
+            animation: slideUp 0.4s ease-out;
+          }
+          @keyframes checkmark {
+            0% {
+              stroke-dashoffset: 50;
+            }
+            100% {
+              stroke-dashoffset: 0;
+            }
+          }
+          .checkmark-path {
+            stroke-dasharray: 50;
+            stroke-dashoffset: 50;
+            animation: checkmark 0.5s ease-in-out 0.3s forwards;
+          }
+        `}</style>
+
         {/* Animación de éxito */}
         <div className="bg-white rounded-xl shadow-lg border-2 p-8 md:p-12 text-center"
           style={{ borderColor: `${colorPrimario}40` }}
@@ -267,7 +333,7 @@ export default function FormularioReserva({
           {/* Checkmark animado */}
           <div className="mb-6">
             <div 
-              className="w-20 h-20 mx-auto rounded-full flex items-center justify-center animate-bounce"
+              className="w-20 h-20 mx-auto rounded-full flex items-center justify-center"
               style={{ backgroundColor: `${colorPrimario}20` }}
             >
               <div 
@@ -275,7 +341,13 @@ export default function FormularioReserva({
                 style={{ backgroundColor: colorPrimario }}
               >
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  <path 
+                    className="checkmark-path"
+                    strokeLinecap="round" 
+                    strokeLinejoin="round" 
+                    strokeWidth={3} 
+                    d="M5 13l4 4L19 7" 
+                  />
                 </svg>
               </div>
             </div>
@@ -375,7 +447,7 @@ export default function FormularioReserva({
           <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
             <button
               onClick={handleNuevaReserva}
-              className="flex-1 px-6 py-3 border-2 rounded-lg font-medium transition-all hover:bg-gray-50"
+              className="flex-1 px-6 py-3 border-2 rounded-lg font-medium transition-all hover:bg-gray-50 transform hover:scale-105 active:scale-95"
               style={{ 
                 borderColor: colorPrimario,
                 color: colorPrimario
@@ -385,7 +457,7 @@ export default function FormularioReserva({
             </button>
             <button
               onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="flex-1 px-6 py-3 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all"
+              className="flex-1 px-6 py-3 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all transform hover:scale-105 active:scale-95"
               style={{ backgroundColor: colorPrimario }}
             >
               ✓ Entendido
@@ -411,11 +483,22 @@ export default function FormularioReserva({
   // Formulario normal
   return (
     <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 animate-fadeIn">
+      <style jsx>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+          20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .animate-shake {
+          animation: shake 0.5s;
+        }
+      `}</style>
+
       {/* Header */}
       <div className="mb-6">
         <button
           onClick={onBack}
-          className="text-sm text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-1 transition-colors"
+          className="text-sm text-gray-600 hover:text-gray-900 mb-4 flex items-center gap-1 transition-all hover:gap-2"
         >
           ← Volver
         </button>
@@ -429,7 +512,7 @@ export default function FormularioReserva({
 
       {/* Resumen de la cita */}
       <div 
-        className="mb-6 p-4 rounded-lg border-2"
+        className="mb-6 p-4 rounded-lg border-2 transition-all duration-300"
         style={{ 
           backgroundColor: `${colorPrimario}08`,
           borderColor: `${colorPrimario}30`
@@ -462,7 +545,7 @@ export default function FormularioReserva({
       <form onSubmit={handleSubmit} className="space-y-5">
         
         {/* Nombre completo */}
-        <div>
+        <div className={touched.nombre && errors.nombre ? 'animate-shake' : ''}>
           <label 
             htmlFor="nombre" 
             className="block text-sm font-medium text-gray-900 mb-1.5"
@@ -472,13 +555,14 @@ export default function FormularioReserva({
           <div className="flex items-center gap-2">
             <div className="flex-1">
               <input
+                ref={nombreInputRef}
                 type="text"
                 id="nombre"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 onBlur={() => handleBlur('nombre')}
                 placeholder="Ej: Juan Pérez García"
-                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('nombre', nombre)}`}
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 ${getBorderClass('nombre', nombre)}`}
                 style={{ 
                   focusRingColor: errors.nombre ? '#ef4444' : touched.nombre && nombre ? '#10b981' : colorPrimario 
                 }}
@@ -488,7 +572,7 @@ export default function FormularioReserva({
               {touched.nombre && (
                 <>
                   {errors.nombre ? (
-                    <span className="text-red-500 text-xl">✕</span>
+                    <span className="text-red-500 text-xl animate-pulse">✕</span>
                   ) : nombre.trim() ? (
                     <span className="text-green-500 text-xl">✓</span>
                   ) : null}
@@ -497,19 +581,19 @@ export default function FormularioReserva({
             </div>
           </div>
           {touched.nombre && errors.nombre && (
-            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1 animate-slideDown">
               <span>⚠️</span> {errors.nombre}
             </p>
           )}
           {touched.nombre && !errors.nombre && nombre.trim() && (
-            <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
+            <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1 animate-slideDown">
               <span>✓</span> Nombre válido
             </p>
           )}
         </div>
 
         {/* Email */}
-        <div>
+        <div className={touched.email && errors.email ? 'animate-shake' : ''}>
           <label 
             htmlFor="email" 
             className="block text-sm font-medium text-gray-900 mb-1.5"
@@ -525,14 +609,14 @@ export default function FormularioReserva({
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={() => handleBlur('email')}
                 placeholder="Ej: juan.perez@email.com"
-                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('email', email)}`}
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 ${getBorderClass('email', email)}`}
               />
             </div>
             <div className="w-6 flex items-center justify-center">
               {touched.email && (
                 <>
                   {errors.email ? (
-                    <span className="text-red-500 text-xl">✕</span>
+                    <span className="text-red-500 text-xl animate-pulse">✕</span>
                   ) : email.trim() ? (
                     <span className="text-green-500 text-xl">✓</span>
                   ) : null}
@@ -541,19 +625,19 @@ export default function FormularioReserva({
             </div>
           </div>
           {touched.email && errors.email && (
-            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1 animate-slideDown">
               <span>⚠️</span> {errors.email}
             </p>
           )}
           {touched.email && !errors.email && email.trim() && (
-            <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
+            <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1 animate-slideDown">
               <span>✓</span> Email válido
             </p>
           )}
         </div>
 
         {/* Teléfono con máscara */}
-        <div>
+        <div className={touched.telefono && errors.telefono ? 'animate-shake' : ''}>
           <label 
             htmlFor="telefono" 
             className="block text-sm font-medium text-gray-900 mb-1.5"
@@ -570,7 +654,7 @@ export default function FormularioReserva({
                 onPaste={handleTelefonoPaste}
                 onBlur={() => handleBlur('telefono')}
                 placeholder="443 123 4567"
-                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('telefono', telefono)}`}
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 ${getBorderClass('telefono', telefono)}`}
                 inputMode="numeric"
               />
             </div>
@@ -578,7 +662,7 @@ export default function FormularioReserva({
               {touched.telefono && (
                 <>
                   {errors.telefono ? (
-                    <span className="text-red-500 text-xl">✕</span>
+                    <span className="text-red-500 text-xl animate-pulse">✕</span>
                   ) : telefono.trim() ? (
                     <span className="text-green-500 text-xl">✓</span>
                   ) : null}
@@ -587,12 +671,12 @@ export default function FormularioReserva({
             </div>
           </div>
           {touched.telefono && errors.telefono && (
-            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1 animate-slideDown">
               <span>⚠️</span> {errors.telefono}
             </p>
           )}
           {touched.telefono && !errors.telefono && telefono.trim() && (
-            <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
+            <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1 animate-slideDown">
               <span>✓</span> Teléfono válido
             </p>
           )}
@@ -608,19 +692,40 @@ export default function FormularioReserva({
           )}
         </div>
 
+        {/* Progress bar durante submit */}
+        {isSubmitting && (
+          <div className="animate-slideDown">
+            <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div 
+                className="h-full transition-all duration-300"
+                style={{ 
+                  width: `${submitProgress}%`,
+                  backgroundColor: colorPrimario
+                }}
+              />
+            </div>
+            <p className="text-xs text-gray-600 text-center mt-2">
+              Procesando tu reserva... {submitProgress}%
+            </p>
+          </div>
+        )}
+
         {/* Botones */}
         <div className="flex flex-col sm:flex-row gap-3 pt-4">
           <button
             type="button"
             onClick={onBack}
-            className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+            disabled={isSubmitting}
+            className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-all transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={isSubmitting || !isFormValid()}
-            className="flex-1 px-6 py-3 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+            className={`flex-1 px-6 py-3 text-white rounded-lg font-medium shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md ${
+              isFormValid() && !isSubmitting ? 'hover:shadow-lg transform hover:scale-105 active:scale-95 animate-pulse' : ''
+            }`}
             style={{ 
               backgroundColor: isFormValid() ? colorPrimario : '#9ca3af'
             }}
@@ -639,7 +744,7 @@ export default function FormularioReserva({
 
         {/* Indicador de progreso */}
         {!isFormValid() && (touched.nombre || touched.email || touched.telefono) && (
-          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg animate-slideDown">
             <p className="text-xs text-yellow-800 font-medium mb-1">
               ⚠️ Completa los siguientes campos:
             </p>
@@ -650,6 +755,13 @@ export default function FormularioReserva({
             </ul>
           </div>
         )}
+
+        {/* Hint de teclado */}
+        <div className="text-center">
+          <p className="text-xs text-gray-400">
+            Presiona <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Enter</kbd> para confirmar o <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Esc</kbd> para cancelar
+          </p>
+        </div>
       </form>
 
       {/* Info adicional */}
