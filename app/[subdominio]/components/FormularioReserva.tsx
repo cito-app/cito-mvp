@@ -43,6 +43,29 @@ export default function FormularioReserva({
     telefono: ''
   })
 
+  // Función para formatear teléfono mexicano (XXX XXX XXXX)
+  const formatPhoneNumber = (value: string): string => {
+    // Eliminar todo lo que no sea número
+    const numbers = value.replace(/\D/g, '')
+    
+    // Limitar a 10 dígitos
+    const limited = numbers.slice(0, 10)
+    
+    // Aplicar formato según la cantidad de dígitos
+    if (limited.length <= 3) {
+      return limited
+    } else if (limited.length <= 6) {
+      return `${limited.slice(0, 3)} ${limited.slice(3)}`
+    } else {
+      return `${limited.slice(0, 3)} ${limited.slice(3, 6)} ${limited.slice(6)}`
+    }
+  }
+
+  // Obtener solo números del teléfono (sin espacios)
+  const getPhoneNumbers = (value: string): string => {
+    return value.replace(/\D/g, '')
+  }
+
   // Validar nombre
   const validateNombre = (value: string): string => {
     if (!value.trim()) {
@@ -73,20 +96,17 @@ export default function FormularioReserva({
 
   // Validar teléfono
   const validateTelefono = (value: string): string => {
-    if (!value.trim()) {
+    // Obtener solo números
+    const numbers = getPhoneNumbers(value)
+    
+    if (!numbers) {
       return 'El teléfono es requerido'
     }
-    // Eliminar espacios y guiones para validar
-    const cleanPhone = value.replace(/[\s-]/g, '')
     
-    // Solo números
-    if (!/^\d+$/.test(cleanPhone)) {
-      return 'El teléfono solo debe contener números'
-    }
-    
-    if (cleanPhone.length !== 10) {
+    if (numbers.length !== 10) {
       return 'El teléfono debe tener exactamente 10 dígitos'
     }
+    
     return ''
   }
 
@@ -121,6 +141,20 @@ export default function FormularioReserva({
   // Handler para marcar campo como touched
   const handleBlur = (field: 'nombre' | 'email' | 'telefono') => {
     setTouched(prev => ({ ...prev, [field]: true }))
+  }
+
+  // Handler especial para teléfono con formato
+  const handleTelefonoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value)
+    setTelefono(formatted)
+  }
+
+  // Handler para paste en teléfono
+  const handleTelefonoPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault()
+    const pastedText = e.clipboardData.getData('text')
+    const formatted = formatPhoneNumber(pastedText)
+    setTelefono(formatted)
   }
 
   // Formatear hora para mostrar
@@ -162,11 +196,15 @@ export default function FormularioReserva({
 
     setIsSubmitting(true)
     
+    // Obtener solo números del teléfono para guardar
+    const telefonoLimpio = getPhoneNumbers(telefono)
+    
     // Por ahora solo mostramos los datos en consola
     console.log('📝 Datos del formulario:', {
       nombre,
       email,
-      telefono,
+      telefono: telefonoLimpio, // Solo números
+      telefonoFormateado: telefono, // Con formato para display
       fecha: selectedDate,
       hora: selectedTime,
       duracion: duracionCita
@@ -204,7 +242,7 @@ export default function FormularioReserva({
   }
 
   return (
-    <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8">
+    <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:p-8 animate-fadeIn">
       {/* Header */}
       <div className="mb-6">
         <button
@@ -343,8 +381,7 @@ export default function FormularioReserva({
             </p>
           )}
         </div>
-
-        {/* Teléfono */}
+{/* Teléfono con máscara */}
         <div>
           <label 
             htmlFor="telefono" 
@@ -352,27 +389,32 @@ export default function FormularioReserva({
           >
             Teléfono celular <span className="text-red-500">*</span>
           </label>
-          <div className="relative">
-            <input
-              type="tel"
-              id="telefono"
-              value={telefono}
-              onChange={(e) => setTelefono(e.target.value)}
-              onBlur={() => handleBlur('telefono')}
-              placeholder="Ej: 4431234567"
-              className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('telefono', telefono)}`}
-              maxLength={10}
-            />
-            {/* Icono de estado */}
-            {touched.telefono && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                {errors.telefono ? (
-                  <span className="text-red-500 text-xl">✕</span>
-                ) : telefono.trim() ? (
-                  <span className="text-green-500 text-xl">✓</span>
-                ) : null}
-              </div>
-            )}
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <input
+                type="tel"
+                id="telefono"
+                value={telefono}
+                onChange={handleTelefonoChange}
+                onPaste={handleTelefonoPaste}
+                onBlur={() => handleBlur('telefono')}
+                placeholder="443 123 4567"
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-colors ${getBorderClass('telefono', telefono)}`}
+                inputMode="numeric"
+              />
+            </div>
+            {/* Icono de estado FUERA del input */}
+            <div className="w-6 flex items-center justify-center">
+              {touched.telefono && (
+                <>
+                  {errors.telefono ? (
+                    <span className="text-red-500 text-xl">✕</span>
+                  ) : telefono.trim() ? (
+                    <span className="text-green-500 text-xl">✓</span>
+                  ) : null}
+                </>
+              )}
+            </div>
           </div>
           {/* Mensaje de error */}
           {touched.telefono && errors.telefono && (
@@ -386,9 +428,17 @@ export default function FormularioReserva({
               <span>✓</span> Teléfono válido
             </p>
           )}
-          <p className="mt-1.5 text-xs text-gray-500">
-            📱 Recibirás confirmación y recordatorios por SMS
-          </p>
+          {/* Helper text */}
+          {!touched.telefono && (
+            <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1">
+              <span>📱</span> Formato: XXX XXX XXXX (10 dígitos)
+            </p>
+          )}
+          {touched.telefono && !errors.telefono && telefono.trim() && (
+            <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1">
+              <span>📱</span> Recibirás confirmación y recordatorios por SMS a este número
+            </p>
+          )}
         </div>
 
         {/* Botones */}
