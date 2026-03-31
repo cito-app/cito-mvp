@@ -220,17 +220,18 @@ export default function PaginaPublicaNegocio() {
             />
           )}
 
-          {/* Formulario de reserva */}
-          {showForm && selectedDate && selectedTime && (
-            <FormularioReserva
-              selectedDate={selectedDate}
-              selectedTime={selectedTime}
-              duracionCita={60}
-              negocioNombre={negocio.nombre_negocio}
-              colorPrimario={negocio.color_primario}
-              onBack={handleBackFromForm}
-            />
-          )}
+{/* Formulario de reserva */}
+{showForm && selectedDate && selectedTime && (
+  <FormularioReserva
+    selectedDate={selectedDate}
+    selectedTime={selectedTime}
+    duracionCita={60}
+    negocioNombre={negocio.nombre_negocio}
+    negocioId={negocio.id}
+    colorPrimario={negocio.color_primario}
+    onBack={handleBackFromForm}
+  />
+)}
         </div>
 
         {/* Info adicional */}

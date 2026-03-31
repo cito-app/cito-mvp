@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
 
 type FormularioReservaProps = {
   selectedDate: Date
   selectedTime: string
   duracionCita: number
   negocioNombre: string
+  negocioId: string  // ← NUEVO: Necesitamos el ID del negocio
   colorPrimario: string
   onBack: () => void
 }
@@ -18,6 +20,7 @@ type ValidationError = {
 }
 
 type ReservaData = {
+  id: string  // ← NUEVO: ID real de la BD
   nombre: string
   email: string
   telefono: string
@@ -31,6 +34,7 @@ export default function FormularioReserva({
   selectedTime,
   duracionCita,
   negocioNombre,
+  negocioId,  // ← NUEVO
   colorPrimario,
   onBack
 }: FormularioReservaProps) {
@@ -41,6 +45,7 @@ export default function FormularioReserva({
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [reservaConfirmada, setReservaConfirmada] = useState<ReservaData | null>(null)
   const [submitProgress, setSubmitProgress] = useState(0)
+  const [submitError, setSubmitError] = useState<string | null>(null)  // ← NUEVO
   
   // Estados de validación
   const [touched, setTouched] = useState({
@@ -194,7 +199,7 @@ export default function FormularioReserva({
     return `${displayHour}:${minutes} ${ampm}`
   }
 
-  // Handler de submit
+  // Handler de submit con INSERT a Supabase
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -218,26 +223,21 @@ export default function FormularioReserva({
 
     // Si hay errores, no continuar
     if (nombreError || emailError || telefonoError) {
-      // Shake animation en el primer campo con error
       return
     }
 
     setIsSubmitting(true)
     setSubmitProgress(0)
+    setSubmitError(null)
     
     // Obtener solo números del teléfono para guardar
     const telefonoLimpio = getPhoneNumbers(telefono)
     
-    const reservaData: ReservaData = {
-      nombre,
-      email,
-      telefono: telefonoLimpio,
-      fecha: selectedDate,
-      hora: selectedTime,
-      duracion: duracionCita
-    }
-    
-    console.log('📝 Datos del formulario:', reservaData)
+    console.log('📝 Iniciando guardado de reserva...')
+    console.log('Negocio ID:', negocioId)
+    console.log('Cliente:', nombre)
+    console.log('Fecha:', selectedDate.toISOString().split('T')[0])
+    console.log('Hora:', selectedTime)
 
     // Simular progress bar
     const progressInterval = setInterval(() => {
@@ -250,18 +250,68 @@ export default function FormularioReserva({
       })
     }, 150)
 
-    // Simular proceso de guardado
-    setTimeout(() => {
+    try {
+      // INSERT a la base de datos
+      const { data, error } = await supabase
+        .from('reservations')
+        .insert([
+          {
+            user_id: negocioId,
+            cliente_nombre: nombre,
+            cliente_email: email,
+            cliente_telefono: telefonoLimpio,
+            fecha_cita: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD
+            hora_cita: selectedTime, // HH:MM:SS
+            duracion_minutos: duracionCita,
+            status: 'confirmada',
+            sms_confirmacion_enviado: false,
+            sms_recordatorio_enviado: false
+          }
+        ])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('❌ Error al guardar reserva:', error)
+        throw error
+      }
+
+      console.log('✅ Reserva guardada exitosamente:', data)
+
+      // Completar progress bar
       clearInterval(progressInterval)
       setSubmitProgress(100)
-      
+
+      // Crear objeto de reserva confirmada con datos de la BD
+      const reservaData: ReservaData = {
+        id: data.id,
+        nombre: data.cliente_nombre,
+        email: data.cliente_email,
+        telefono: data.cliente_telefono,
+        fecha: new Date(data.fecha_cita),
+        hora: data.hora_cita,
+        duracion: data.duracion_minutos
+      }
+
+      // Mostrar confirmación después de un momento
       setTimeout(() => {
         setReservaConfirmada(reservaData)
         setShowConfirmation(true)
         setIsSubmitting(false)
         setSubmitProgress(0)
       }, 300)
-    }, 1500)
+
+    } catch (error: any) {
+      console.error('❌ Error en el proceso:', error)
+      clearInterval(progressInterval)
+      setSubmitProgress(0)
+      setIsSubmitting(false)
+      
+      // Mostrar error al usuario
+      setSubmitError(
+        error.message || 'Hubo un error al guardar tu reserva. Por favor intenta de nuevo.'
+      )
+    }
   }
 
   // Handler para nueva reserva
@@ -273,6 +323,7 @@ export default function FormularioReserva({
     setErrors({ nombre: '', email: '', telefono: '' })
     setShowConfirmation(false)
     setReservaConfirmada(null)
+    setSubmitError(null)
     onBack()
   }
 
@@ -464,9 +515,9 @@ export default function FormularioReserva({
             </button>
           </div>
 
-          {/* Nota final */}
+          {/* Nota final con ID real */}
           <p className="mt-8 text-xs text-gray-500">
-            Reserva #TEMP-{Date.now().toString().slice(-6)} • {new Date().toLocaleTimeString('es-MX')}
+            Reserva #{reservaConfirmada.id.slice(0, 8).toUpperCase()} • {new Date().toLocaleTimeString('es-MX')}
           </p>
         </div>
 
@@ -509,6 +560,29 @@ export default function FormularioReserva({
           Ingresa tus datos para confirmar tu cita
         </p>
       </div>
+
+      {/* Error de submit */}
+      {submitError && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg animate-slideDown">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">⚠️</span>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800 mb-1">
+                Error al guardar la reserva
+              </p>
+              <p className="text-xs text-red-700">
+                {submitError}
+              </p>
+              <button
+                onClick={() => setSubmitError(null)}
+                className="mt-2 text-xs text-red-600 hover:text-red-800 underline"
+              >
+                Intentar de nuevo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Resumen de la cita */}
       <div 
@@ -562,7 +636,8 @@ export default function FormularioReserva({
                 onChange={(e) => setNombre(e.target.value)}
                 onBlur={() => handleBlur('nombre')}
                 placeholder="Ej: Juan Pérez García"
-                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 ${getBorderClass('nombre', nombre)}`}
+                disabled={isSubmitting}
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${getBorderClass('nombre', nombre)}`}
                 style={{ 
                   focusRingColor: errors.nombre ? '#ef4444' : touched.nombre && nombre ? '#10b981' : colorPrimario 
                 }}
@@ -609,7 +684,8 @@ export default function FormularioReserva({
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={() => handleBlur('email')}
                 placeholder="Ej: juan.perez@email.com"
-                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 ${getBorderClass('email', email)}`}
+                disabled={isSubmitting}
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${getBorderClass('email', email)}`}
               />
             </div>
             <div className="w-6 flex items-center justify-center">
@@ -654,7 +730,8 @@ export default function FormularioReserva({
                 onPaste={handleTelefonoPaste}
                 onBlur={() => handleBlur('telefono')}
                 placeholder="443 123 4567"
-                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 ${getBorderClass('telefono', telefono)}`}
+                disabled={isSubmitting}
+                className={`w-full px-4 py-2.5 border-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1 text-gray-900 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${getBorderClass('telefono', telefono)}`}
                 inputMode="numeric"
               />
             </div>
@@ -705,7 +782,7 @@ export default function FormularioReserva({
               />
             </div>
             <p className="text-xs text-gray-600 text-center mt-2">
-              Procesando tu reserva... {submitProgress}%
+              Guardando tu reserva... {submitProgress}%
             </p>
           </div>
         )}
@@ -734,7 +811,7 @@ export default function FormularioReserva({
             {isSubmitting ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                Procesando...
+                Guardando...
               </span>
             ) : (
               'Confirmar reserva'
@@ -757,11 +834,13 @@ export default function FormularioReserva({
         )}
 
         {/* Hint de teclado */}
-        <div className="text-center">
-          <p className="text-xs text-gray-400">
-            Presiona <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Enter</kbd> para confirmar o <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Esc</kbd> para cancelar
-          </p>
-        </div>
+        {!isSubmitting && (
+          <div className="text-center">
+            <p className="text-xs text-gray-400">
+              Presiona <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Enter</kbd> para confirmar o <kbd className="px-2 py-1 bg-gray-100 rounded text-xs">Esc</kbd> para cancelar
+            </p>
+          </div>
+        )}
       </form>
 
       {/* Info adicional */}
