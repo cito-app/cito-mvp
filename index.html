@@ -1,287 +1,382 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Panel de Administración — Cito.mx</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: '#3B82F6',
-          },
-          fontFamily: {
-            sans: ['Inter', 'sans-serif'],
-          },
-          borderRadius: {
-            card: '8px',
-          },
-        },
-      },
-    };
-  </script>
-  <style>
-    body { font-family: 'Inter', sans-serif; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Citas | Cito</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-gray-100 min-h-screen text-gray-800">
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased">
 
-  <!-- Header -->
-  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 bg-brand rounded-card flex items-center justify-center">
-          <span class="text-white font-bold text-sm">C</span>
+    <!-- Header / Navbar Dinámico -->
+    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-xl" id="logo-placeholder">
+                    C
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight" id="nombre-negocio">Cargando negocio...</h1>
+                    <p class="text-xs text-slate-400" id="subdominio-tag">Buscando negocio...</p>
+                </div>
+            </div>
+            <button onclick="cargarCitas()" class="bg-slate-700 hover:bg-slate-600 text-sm px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
+                <span>🔄</span> <span>Actualizar</span>
+            </button>
         </div>
-        <h1 class="text-xl font-bold text-gray-900">Cito<span class="text-brand">.mx</span></h1>
-      </div>
-      <div class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-card px-3 py-1.5">
-        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-        <span class="text-sm font-medium text-green-700">Servidor Activo</span>
-      </div>
-    </div>
-  </header>
+    </header>
 
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Contenido Principal -->
+    <main class="max-w-5xl mx-auto px-4 py-6 space-y-8">
 
-    <!-- Tarjetas de resumen -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-      <div class="bg-white rounded-card shadow-sm border border-gray-200 p-6">
-        <p class="text-sm font-medium text-gray-500 mb-1">Total de Citas</p>
-        <p id="total-citas" class="text-3xl font-bold text-gray-900">—</p>
-      </div>
-      <div class="bg-white rounded-card shadow-sm border border-gray-200 p-6">
-        <p class="text-sm font-medium text-gray-500 mb-1">Citas Pendientes</p>
-        <p id="citas-hoy" class="text-3xl font-bold text-brand">—</p>
-      </div>
-    </div>
+        <!-- Métricas Rápidas -->
+        <section class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Citas</p>
+                <p class="text-2xl font-bold text-indigo-400 mt-1" id="total-hoy">0</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Confirmadas</p>
+                <p class="text-2xl font-bold text-emerald-400 mt-1" id="total-confirmadas">0</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 col-span-2 md:col-span-1">
+                <p class="text-xs text-slate-400 font-medium uppercase tracking-wider">Estado del Sistema</p>
+                <div class="flex items-center space-x-2 mt-2">
+                    <span class="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></span>
+                    <span class="text-sm font-medium text-slate-200">Bot Activo 24/7</span>
+                </div>
+            </div>
+        </section>
 
-    <!-- Tabla de citas -->
-    <div class="bg-white rounded-card shadow-sm border border-gray-200 overflow-hidden">
-      <div class="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 id="table-title" class="text-lg font-semibold text-gray-900">Citas pendientes</h2>
-          <p id="table-subtitle" class="text-xs text-gray-500 mt-0.5">Solo citas por atender hoy</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <button
-            id="toggle-historial"
-            type="button"
-            onclick="toggleHistorial()"
-            class="inline-flex items-center px-4 py-2 text-sm font-medium text-brand bg-blue-50 border border-blue-200 rounded-card hover:bg-blue-100 transition-colors">
-            Ver Historial
-          </button>
-          <span id="last-updated" class="text-xs text-gray-400"></span>
-        </div>
-      </div>
+        <!-- Lista de Citas -->
+        <section>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Agenda de Citas</h2>
+                <span class="text-xs bg-indigo-950 text-indigo-300 border border-indigo-800 px-2.5 py-1 rounded-full" id="fecha-actual"></span>
+            </div>
 
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              <th class="px-6 py-3">Cliente</th>
-              <th class="px-6 py-3">Teléfono</th>
-              <th class="px-6 py-3">Servicio</th>
-              <th class="px-6 py-3">Fecha/Hora</th>
-              <th class="px-6 py-3">Estado</th>
-              <th class="px-6 py-3 text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="citas-body" class="divide-y divide-gray-100">
-            <tr>
-              <td colspan="6" class="px-6 py-10 text-center text-gray-400">
-                Cargando citas...
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+            <!-- Contenedor de Tarjetas de Citas -->
+            <div id="contenedor-citas" class="grid gap-4 md:grid-cols-2">
+                <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 text-center text-slate-400 col-span-2">
+                    Cargando citas...
+                </div>
+            </div>
+        </section>
 
-  </main>
+        <!-- SECCIÓN DE AJUSTES DEL BOT Y SERVICIO -->
+        <section class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-6">
+            <div>
+                <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                    <span>⚙️</span> Ajustes del Bot y Servicio
+                </h2>
+                <p class="text-sm text-slate-400">Configura el aforo de tus clases y la plantilla de recordatorio por WhatsApp.</p>
+            </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script>
-    const SUPABASE_URL = 'https://pbdprwulwnsjrzvolzut.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
+            <form id="form-ajustes" onsubmit="guardarAjustes(event)" class="space-y-4">
+                <!-- Campo Capacidad / Aforo -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">
+                        Capacidad Máxima por Horario (Aforo)
+                    </label>
+                    <input 
+                        type="number" 
+                        id="input-capacidad" 
+                        min="1" 
+                        max="50" 
+                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-500" 
+                        placeholder="Ej. 1 para Barbería, 6 para Pilates"
+                        required
+                    />
+                    <span class="text-xs text-slate-500">Determina cuántas personas pueden agendar simultáneamente en la misma hora.</span>
+                </div>
 
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                <!-- Campo Plantilla de Recordatorio -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">
+                        Plantilla de Recordatorio por WhatsApp
+                    </label>
+                    <textarea 
+                        id="input-plantilla" 
+                        rows="3" 
+                        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-slate-100 focus:outline-none focus:border-indigo-500 text-sm" 
+                        placeholder="Hola {cliente}, te recordamos tu cita de {servicio} para el {fecha} a las {hora}."
+                        required
+                    ></textarea>
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        <span class="text-xs bg-slate-700 text-indigo-300 px-2 py-1 rounded font-medium">Etiquetas dinámicas disponibles:</span>
+                        <span class="text-xs bg-slate-900 text-slate-300 px-2 py-1 rounded border border-slate-700">{cliente}</span>
+                        <span class="text-xs bg-slate-900 text-slate-300 px-2 py-1 rounded border border-slate-700">{servicio}</span>
+                        <span class="text-xs bg-slate-900 text-slate-300 px-2 py-1 rounded border border-slate-700">{fecha}</span>
+                        <span class="text-xs bg-slate-900 text-slate-300 px-2 py-1 rounded border border-slate-700">{hora}</span>
+                    </div>
+                </div>
 
-    const citasBody = document.getElementById('citas-body');
-    const totalCitasEl = document.getElementById('total-citas');
-    const citasHoyEl = document.getElementById('citas-hoy');
-    const lastUpdatedEl = document.getElementById('last-updated');
-    const tableTitleEl = document.getElementById('table-title');
-    const tableSubtitleEl = document.getElementById('table-subtitle');
-    const toggleHistorialBtn = document.getElementById('toggle-historial');
+                <!-- Botón Guardar -->
+                <div class="pt-2 flex items-center gap-4">
+                    <button 
+                        type="submit" 
+                        id="btn-guardar" 
+                        class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                        💾 Guardar Configuración
+                    </button>
+                    <span id="mensaje-feedback" class="text-sm font-medium text-emerald-400 hidden">¡Ajustes guardados en Supabase!</span>
+                </div>
+            </form>
+        </section>
 
-    let allCitas = [];
-    let showHistory = false;
+    </main>
 
-    function getEstado(cita) {
-      return cita.estado || 'pendiente';
-    }
+    <!-- Script de Lógica Principal -->
+    <script>
+        // ⚠️ REEMPLAZA ESTAS DOS LÍNEAS CON TUS CREDENCIALES DE SUPABASE
+        const SUPABASE_URL = 'https://pbdprwulwnsjrzvolzut.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
 
-    function getFilteredCitas() {
-      if (showHistory) {
-        return allCitas;
-      }
+        const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        let negocioActual = null;
 
-      return allCitas.filter((cita) => getEstado(cita) === 'pendiente');
-    }
+        // 1. Obtener identificador por URL demo, subdominio o dominio propio
+        function obtenerIdentificadorHost() {
+            const params = new URLSearchParams(window.location.search);
+            
+            if (params.has('demo')) {
+                return params.get('demo').toLowerCase().trim();
+            }
 
-    function toggleHistorial() {
-      showHistory = !showHistory;
-      toggleHistorialBtn.textContent = showHistory ? 'Ver Solo Pendientes' : 'Ver Historial';
-      tableTitleEl.textContent = showHistory ? 'Historial de citas' : 'Citas pendientes';
-      tableSubtitleEl.textContent = showHistory
-        ? 'Incluye completadas y canceladas'
-        : 'Solo citas por atender hoy';
-      renderCitas(getFilteredCitas());
-    }
+            const host = window.location.hostname.toLowerCase();
+            const partes = host.split('.');
 
-    window.toggleHistorial = toggleHistorial;
+            if (host === 'localhost' || host === '127.0.0.1' || host === 'cito.mx' || host === 'www.cito.mx') {
+                return 'barberia'; // Negocio default en desarrollo o en dominio base
+            }
 
-    function formatTelefono(telefono) {
-      if (!telefono) return '—';
-      const digits = telefono.replace('@c.us', '').replace(/\D/g, '');
-      if (digits.length === 13 && digits.startsWith('521')) {
-        return `+52 ${digits.slice(3, 5)} ${digits.slice(5, 9)} ${digits.slice(9)}`;
-      }
-      return `+${digits}`;
-    }
+            if (partes.length >= 3) {
+                return partes[0]; // Captura subdominio
+            }
 
+            return host; // Captura dominio personalizado
+        }
 
-    function estadoBadge(estado) {
-      const map = {
-        pendiente: 'bg-yellow-50 text-yellow-700 border-yellow-200',
-        completada: 'bg-green-50 text-green-700 border-green-200',
-        cancelada: 'bg-red-50 text-red-700 border-red-200',
-      };
-      const cls = map[estado] || map.pendiente;
-      const label = estado || 'pendiente';
-      return `<span class="inline-flex items-center px-2 py-0.5 rounded-card border text-xs font-medium capitalize ${cls}">${label}</span>`;
-    }
+        // 2. Inicializar la app y consultar la tabla 'negocios'
+        async function inicializarApp() {
+            const identificador = obtenerIdentificadorHost();
+            
+            const elemFecha = document.getElementById('fecha-actual');
+            if (elemFecha) {
+                elemFecha.innerText = new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+            }
 
-    function renderCitas(citas) {
-      const pendientes = allCitas.filter((c) => getEstado(c) === 'pendiente');
+            // Consulta permisos en la tabla negocios por subdominio
+            let { data: negocio } = await _supabase
+                .from('negocios')
+                .select('*')
+                .eq('subdominio', identificador)
+                .maybeSingle();
 
-      totalCitasEl.textContent = showHistory ? allCitas.length : pendientes.length;
-      citasHoyEl.textContent = pendientes.length;
-      lastUpdatedEl.textContent = `Actualizado: ${new Date().toLocaleTimeString('es-MX')}`;
+            // Fallback: consulta por dominio_personalizado si no lo encuentra por subdominio
+            if (!negocio) {
+                const { data: negocioDom } = await _supabase
+                    .from('negocios')
+                    .select('*')
+                    .eq('dominio_personalizado', identificador)
+                    .maybeSingle();
+                negocio = negocioDom;
+            }
 
-      if (citas.length === 0) {
-        citasBody.innerHTML = `
-          <tr>
-            <td colspan="6" class="px-6 py-10 text-center text-gray-400">
-              ${showHistory ? 'No hay citas en el historial.' : 'No hay citas pendientes.'}
-            </td>
-          </tr>`;
-        return;
-      }
+            if (!negocio) {
+                document.getElementById('nombre-negocio').innerText = "Negocio no encontrado";
+                document.getElementById('subdominio-tag').innerText = `@${identificador}`;
+                document.getElementById('contenedor-citas').innerHTML = `
+                    <div class="bg-slate-800 p-6 rounded-xl border border-amber-800/50 text-amber-300 col-span-2">
+                        ⚠️ No se encontró ningún negocio registrado con el identificador: <b>"${identificador}"</b>.
+                    </div>`;
+                return;
+            }
 
-      citasBody.innerHTML = citas.map((cita) => {
-        const estado = getEstado(cita);
-        const isPending = estado === 'pendiente';
-        const nombre = cita.nombre || cita.cliente_nombre || '—';
-        const telefono = cita.telefono || cita.cliente_telefono;
+            negocioActual = negocio;
+            document.getElementById('nombre-negocio').innerText = negocio.nombre;
+            document.getElementById('subdominio-tag').innerText = `@${negocio.subdominio}`;
+            document.getElementById('logo-placeholder').innerText = negocio.nombre.charAt(0).toUpperCase();
 
-        return `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 font-medium text-gray-900">${nombre}</td>
-            <td class="px-6 py-4 text-gray-600">${formatTelefono(telefono)}</td>
-            <td class="px-6 py-4 text-gray-700">${cita.servicio || '—'}</td>
-            <td class="px-6 py-4 text-gray-600 whitespace-nowrap">${cita.fecha_hora || '—'}</td>
-            <td class="px-6 py-4">${estadoBadge(estado)}</td>
-            <td class="px-6 py-4 text-right whitespace-nowrap">
-              ${isPending ? `
-                <button
-                  type="button"
-                  onclick="actualizarEstado('${cita.id}', 'completada')"
-                  class="inline-flex items-center px-3 py-1.5 mr-1 text-xs font-semibold text-white bg-green-600 border border-green-600 rounded-card hover:bg-green-700 transition-colors shadow-sm">
-                  Completar
-                </button>
-                <button
-                  type="button"
-                  onclick="actualizarEstado('${cita.id}', 'cancelada')"
-                  class="inline-flex items-center px-3 py-1.5 text-xs font-semibold text-white bg-red-600 border border-red-600 rounded-card hover:bg-red-700 transition-colors shadow-sm">
-                  Cancelar
-                </button>
-              ` : `<span class="text-xs text-gray-400">—</span>`}
-            </td>
-          </tr>`;
-      }).join('');
-    }
+            cargarCitas(negocio.id);
+            cargarAjustes();
+        }
 
-    async function fetchCitas() {
-      const { data, error } = await supabaseClient
-        .from('citas')
-        .select('*')
-        .order('created_at', { ascending: false });
+        // 3. Consultar y renderizar la agenda de citas con aforo agrupado
+        async function cargarCitas(negocioId) {
+            const idParaConsultar = negocioId || negocioActual?.id;
+            const contenedor = document.getElementById('contenedor-citas');
+            contenedor.innerHTML = '<div class="text-slate-400 col-span-2">Actualizando agenda...</div>';
 
-      if (error) {
-        citasBody.innerHTML = `
-          <tr>
-            <td colspan="6" class="px-6 py-10 text-center text-red-500">
-              Error al cargar citas: ${error.message}
-            </td>
-          </tr>`;
-        console.error('Error Supabase:', error);
-        return;
-      }
+            if (!idParaConsultar) return;
 
-      allCitas = data || [];
-      renderCitas(getFilteredCitas());
-    }
+            try {
+                // Traer la información de aforo/capacidad máxima desde la tabla servicios
+                const { data: serviciosData } = await _supabase
+                    .from('servicios')
+                    .select('id, capacidad_maxima')
+                    .eq('negocio_id', idParaConsultar);
 
-    async function actualizarEstado(id, nuevoEstado) {
-      const { error } = await supabaseClient
-        .from('citas')
-        .update({ estado: nuevoEstado })
-        .eq('id', id);
+                const mapaCapacidades = {};
+                if (serviciosData) {
+                    serviciosData.forEach(s => {
+                        mapaCapacidades[s.id] = s.capacidad_maxima || 1;
+                    });
+                }
 
-      if (error) {
-        alert(`No se pudo actualizar la cita: ${error.message}`);
-        console.error('Error al actualizar:', error);
-        return;
-      }
+                // Traer citas del negocio
+                const { data: citas, error } = await _supabase
+                    .from('citas')
+                    .select('*')
+                    .eq('negocio_id', idParaConsultar)
+                    .order('fecha_hora', { ascending: true });
 
-      await fetchCitas();
-    }
+                if (error) throw error;
 
-    window.actualizarEstado = actualizarEstado;
+                if (!citas || citas.length === 0) {
+                    contenedor.innerHTML = '<div class="bg-slate-800 p-6 rounded-xl border border-slate-700 text-slate-400 col-span-2">No hay citas registradas para este negocio.</div>';
+                    document.getElementById('total-hoy').innerText = '0';
+                    document.getElementById('total-confirmadas').innerText = '0';
+                    return;
+                }
 
-    function subscribeToCitasChanges() {
-      supabaseClient
-        .channel('custom-insert-channel')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'citas' },
-          (payload) => {
-            console.log('Nueva cita detectada en tiempo real:', payload.new);
-            fetchCitas();
-          },
-        )
-        .on(
-          'postgres_changes',
-          { event: 'UPDATE', schema: 'public', table: 'citas' },
-          (payload) => {
-            console.log('Cita actualizada en tiempo real:', payload.new);
-            fetchCitas();
-          },
-        )
-        .subscribe((status) => {
-          console.log('Canal custom-insert-channel:', status);
-        });
-    }
+                // Actualizar métricas
+                document.getElementById('total-hoy').innerText = citas.length;
+                const confirmadas = citas.filter(c => c.estado === 'confirmada').length;
+                document.getElementById('total-confirmadas').innerText = confirmadas;
 
-    fetchCitas();
-    subscribeToCitasChanges();
-  </script>
+                // Renderizar tarjetas
+                contenedor.innerHTML = citas.map(cita => {
+                    const esConfirmada = cita.estado === 'confirmada';
+                    const badgeColor = esConfirmada ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-amber-950 text-amber-300 border-amber-800';
+
+                    // Obtener capacidad o asignar fallback por tipo de negocio
+                    const capacidad = mapaCapacidades[cita.servicio_id] || (negocioActual?.subdominio === 'pilates' ? 6 : 1);
+                    const esGrupal = capacidad > 1;
+
+                    // Conteo dinámico de reservaciones en el mismo horario
+                    const inscritos = citas.filter(c => c.fecha_hora === cita.fecha_hora).length;
+                    const porcentajeLleno = Math.min((inscritos / capacidad) * 100, 100);
+
+                    return `
+                        <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-3 relative overflow-hidden">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <span class="text-xs font-semibold uppercase tracking-wider text-indigo-400">${cita.servicio || 'Servicio'}</span>
+                                    <h3 class="font-bold text-lg text-slate-100">${cita.cliente_nombre || 'Cliente sin nombre'}</h3>
+                                </div>
+                                <span class="text-xs px-2.5 py-1 rounded-full border ${badgeColor} font-medium capitalize">
+                                    ${cita.estado || 'pendiente'}
+                                </span>
+                            </div>
+
+                            <div class="flex items-center space-x-4 text-sm text-slate-300">
+                                <div class="flex items-center space-x-1">
+                                    <span>📅 / ⏰</span> <span>${cita.fecha_hora || 'Fecha no definida'}</span>
+                                </div>
+                            </div>
+
+                            ${esGrupal ? `
+                                <div class="pt-3 border-t border-slate-700/50 space-y-1.5">
+                                    <div class="flex justify-between items-center text-xs">
+                                        <span class="text-slate-400">Cupo de la clase:</span>
+                                        <span class="font-bold text-indigo-300">${inscritos}/${capacidad} lugares ocupados</span>
+                                    </div>
+                                    <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                                        <div class="bg-indigo-500 h-full rounded-full transition-all duration-500" style="width: ${porcentajeLleno}%"></div>
+                                    </div>
+                                </div>
+                            ` : ''}
+
+                            <div class="pt-1 text-xs text-slate-400 flex items-center justify-between">
+                                <span>📱 ${cita.cliente_telefono || 'Sin teléfono'}</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (err) {
+                console.error("Error al cargar citas:", err);
+                contenedor.innerHTML = `<div class="bg-slate-800 p-6 rounded-xl border border-red-800 text-red-400 col-span-2">Error al cargar la agenda.</div>`;
+            }
+        }
+
+        // 4. Cargar los ajustes guardados de la base de datos al formulario
+        async function cargarAjustes() {
+            if (!negocioActual) return;
+
+            // Cargar plantilla guardada en 'negocios'
+            if (negocioActual.plantilla_recordatorio) {
+                document.getElementById('input-plantilla').value = negocioActual.plantilla_recordatorio;
+            }
+
+            // Cargar capacidad máxima guardada en 'servicios'
+            const { data: servicio } = await _supabase
+                .from('servicios')
+                .select('capacidad_maxima')
+                .eq('negocio_id', negocioActual.id)
+                .limit(1)
+                .maybeSingle();
+
+            if (servicio) {
+                document.getElementById('input-capacidad').value = servicio.capacidad_maxima || 1;
+            }
+        }
+
+        // 5. Guardar los cambios del formulario directamente en Supabase
+        async function guardarAjustes(event) {
+            event.preventDefault();
+            const btn = document.getElementById('btn-guardar');
+            const feedback = document.getElementById('mensaje-feedback');
+            
+            btn.disabled = true;
+            btn.innerText = "Guardando...";
+
+            const nuevaCapacidad = parseInt(document.getElementById('input-capacidad').value);
+            const nuevaPlantilla = document.getElementById('input-plantilla').value;
+
+            try {
+                // Actualizar plantilla en la tabla negocios
+                const { error: errNegocio } = await _supabase
+                    .from('negocios')
+                    .update({ plantilla_recordatorio: nuevaPlantilla })
+                    .eq('id', negocioActual.id);
+
+                if (errNegocio) throw errNegocio;
+
+                // Actualizar capacidad máxima en la tabla servicios
+                const { error: errServicio } = await _supabase
+                    .from('servicios')
+                    .update({ capacidad_maxima: nuevaCapacidad })
+                    .eq('negocio_id', negocioActual.id);
+
+                if (errServicio) throw errServicio;
+
+                // Actualizar la variable local para sincronía
+                negocioActual.plantilla_recordatorio = nuevaPlantilla;
+
+                // Notificación visual de éxito
+                feedback.classList.remove('hidden');
+                setTimeout(() => feedback.classList.add('hidden'), 3000);
+
+                // Recargar las citas para reflejar cambios visuales en las barras de aforo
+                await cargarCitas(negocioActual.id);
+
+            } catch (err) {
+                console.error("Error al guardar ajustes:", err);
+                alert("Ocurrió un error al guardar los ajustes: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "💾 Guardar Configuración";
+            }
+        }
+
+        // Ejecutar la aplicación cuando el HTML esté cargado
+        document.addEventListener('DOMContentLoaded', inicializarApp);
+    </script>
 </body>
 </html>

@@ -5,8 +5,9 @@ const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
-const SUPABASE_URL = 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
-const SUPABASE_KEY = 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
+// Configuración de Supabase
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
 
 const PUPPETEER_ARGS = [
   '--no-sandbox',
@@ -23,6 +24,7 @@ function normalizeSupabaseUrl(url) {
 }
 
 function normalizeText(text) {
+  if (!text) return '';
   return text
     .toLowerCase()
     .normalize('NFD')
@@ -84,9 +86,7 @@ function getTodayKeywords() {
 }
 
 function isCitaForToday(fechaHora) {
-  if (!fechaHora) {
-    return false;
-  }
+  if (!fechaHora) return false;
 
   const normalized = normalizeText(fechaHora);
   const todayKeywords = getTodayKeywords();
@@ -94,25 +94,42 @@ function isCitaForToday(fechaHora) {
   return todayKeywords.some((keyword) => normalized.includes(keyword));
 }
 
-function buildReminderMessage(nombre, servicio) {
-  return (
-    `¡Hola ${nombre}! Te recordamos tu cita de hoy para el servicio de: ${servicio}. ` +
-    '⏰ Te esperamos. Si tienes algún contratiempo, por favor avísanos por este medio.'
-  );
+/**
+ * Procesa la plantilla de mensaje reemplazando etiquetas dinámicas.
+ */
+function parsearPlantilla(plantillaBase, cita) {
+  let mensaje = plantillaBase;
+
+  // Plantilla de respaldo si el negocio no ha definido una
+  if (!mensaje || mensaje.trim() === '') {
+    mensaje = '¡Hola {cliente}! Te recordamos tu cita de hoy para el servicio de: {servicio}. ⏰ Te esperamos. Si tienes algún contratiempo, por favor avísanos por este medio.';
+  }
+
+  const nombre = cita.nombre || cita.cliente_nombre || 'Cliente';
+  const servicio = cita.servicio || 'tu servicio';
+
+  // Extraer fecha y hora si vienen juntas en formato "YYYY-MM-DD HH:MM" o similar
+  const partesFechaHora = String(cita.fecha_hora || '').split(' ');
+  const fechaStr = partesFechaHora[0] || 'hoy';
+  const horaStr = partesFechaHora[1] || '';
+
+  mensaje = mensaje.replace(/{cliente}/g, nombre);
+  mensaje = mensaje.replace(/{servicio}/g, servicio);
+  mensaje = mensaje.replace(/{fecha}/g, fechaStr);
+  mensaje = mensaje.replace(/{hora}/g, horaStr);
+
+  return mensaje;
 }
 
 function normalizeMexicoDigits(digits) {
   if (digits.startsWith('521') && digits.length >= 13) {
     return `52${digits.slice(3)}`;
   }
-
   return digits;
 }
 
 function formatChatId(telefono) {
-  if (!telefono) {
-    return null;
-  }
+  if (!telefono) return null;
 
   const trimmed = String(telefono).trim();
 
@@ -128,9 +145,7 @@ function formatChatId(telefono) {
     digits = trimmed.replace(/\D/g, '');
   }
 
-  if (!digits) {
-    return null;
-  }
+  if (!digits) return null;
 
   digits = normalizeMexicoDigits(digits);
   return `${digits}@c.us`;
@@ -153,17 +168,31 @@ const whatsappClient = new Client({
   },
 });
 
+/**
+ * Consulta las citas pendientes/confirmadas trayendo la información del negocio asignado.
+ */
 async function fetchPendingCitasForToday() {
   const { data, error } = await supabase
     .from('citas')
-    .select('*')
-    .eq('estado', 'pendiente');
+    .select(`
+      *,
+      negocios (
+        id,
+        nombre,
+        plantilla_recordatorio
+      )
+    `);
 
   if (error) {
     throw new Error(`Error al consultar citas: ${error.message}`);
   }
 
-  const citasHoy = (data || []).filter((cita) => isCitaForToday(cita.fecha_hora));
+  // Filtrar las que estén pendientes/confirmadas y correspondan al día de hoy
+  const citasHoy = (data || []).filter((cita) => {
+    const estadoValido = cita.estado === 'pendiente' || cita.estado === 'confirmada';
+    return estadoValido && isCitaForToday(cita.fecha_hora);
+  });
+
   return citasHoy;
 }
 
@@ -192,15 +221,16 @@ async function sendReminderToChat(chatId, message, nombre) {
 async function sendReminders(citas) {
   for (const cita of citas) {
     const nombre = cita.nombre || cita.cliente_nombre || 'Cliente';
-    const servicio = cita.servicio || 'tu servicio';
     const chatId = formatChatId(cita.telefono || cita.cliente_telefono);
 
     if (!chatId) {
-      console.warn(`[Recordatorio] Cita ${cita.id} sin teléfono válido. Se omite.`);
+      console.warn(`[Recordatorio] Cita ID ${cita.id} sin teléfono válido. Se omite.`);
       continue;
     }
 
-    const message = buildReminderMessage(nombre, servicio);
+    // Obtener la plantilla asociada al negocio de la cita (si existe)
+    const plantillaNegocio = cita.negocios?.plantilla_recordatorio;
+    const message = parsearPlantilla(plantillaNegocio, cita);
 
     try {
       await sendReminderToChat(chatId, message, nombre);
@@ -238,7 +268,7 @@ whatsappClient.on('ready', async () => {
     const citasHoy = await fetchPendingCitasForToday();
 
     if (citasHoy.length === 0) {
-      console.log('[Recordatorio] No hay citas pendientes para hoy.');
+      console.log('[Recordatorio] No hay citas pendientes/confirmadas para hoy.');
       await shutdown(0);
       return;
     }
