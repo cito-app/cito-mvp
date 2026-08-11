@@ -27,10 +27,11 @@ const PUPPETEER_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
-  '--disable-gpu',
+  '--disable-accelerated-2d-canvas',
   '--no-first-run',
   '--no-zygote',
-  '--disable-extensions',
+  '--single-process',
+  '--disable-gpu'
 ];
 
 // Configuración adaptable de Puppeteer para Render y Local
@@ -46,11 +47,6 @@ if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
 
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: 'cito-mx' }),
-  webVersionCache: {
-    type: 'remote',
-    remotePath:
-      'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
-  },
   puppeteer: puppeteerOptions,
 });
 
