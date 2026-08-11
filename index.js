@@ -1,5 +1,8 @@
 'use strict';
 
+const QRCode = require('qrcode');
+let qrCodeImageData = ''; // Guardará el QR generado
+
 const fs = require('fs');
 const path = require('path');
 const express = require('express');
@@ -144,9 +147,9 @@ async function sendAdminConfirmation() {
   console.log(`ID del mensaje: ${sentMessage.id._serialized}`);
 }
 
-whatsappClient.on('qr', (qr) => {
-  console.log('\nEscanea este código QR con WhatsApp:\n');
-  qrcode.generate(qr, { small: true });
+whatsappClient.on('qr', async (qr) => {
+    console.log('--- CÓDIGO QR GENERADO ---');
+    qrCodeImageData = await QRCode.toDataURL(qr);
 });
 
 whatsappClient.on('authenticated', () => {
@@ -588,23 +591,23 @@ whatsappClient.on('disconnected', (reason) => {
   console.warn('Cliente de WhatsApp desconectado:', reason);
 });
 
-app.get('/', (_req, res) => {
-  res.type('html').send(`<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cito.mx</title>
-  <style>
-    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #F3F4F6; font-family: sans-serif; }
-    .card { background: #fff; padding: 48px; border-radius: 8px; text-align: center; }
-    .message { color: #3B82F6; font-size: 1.25rem; font-weight: 600; }
-  </style>
-</head>
-<body>
-  <main class="card"><p class="message">¡Bienvenido a Cito.mx! El motor está en línea.</p></main>
-</body>
-</html>`);
+app.get('/', (req, res) => {
+    if (qrCodeImageData) {
+        res.send(`
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                <h2>Escanea el código QR con tu WhatsApp:</h2>
+                <img src="${qrCodeImageData}" alt="QR Code" style="width:300px;height:300px;"/>
+                <p>Actualiza la página si caduca el código.</p>
+            </div>
+        `);
+    } else {
+        res.send(`
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
+                <h2>Bot conectado / Cargando QR...</h2>
+                <p>Si la sesión está activa, el bot ya está funcionando. Si apenas inicia, recarga en unos segundos.</p>
+            </div>
+        `);
+    }
 });
 
 app.get('/health', (_req, res) => {
