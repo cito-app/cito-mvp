@@ -1,4 +1,3 @@
-
 'use strict';
 
 const fs = require('fs');
@@ -8,8 +7,8 @@ const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 
-const SUPABASE_URL = 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
-const SUPABASE_KEY = 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
 
 function normalizeSupabaseUrl(url) {
   return url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
@@ -34,24 +33,15 @@ const PUPPETEER_ARGS = [
   '--disable-extensions',
 ];
 
-function resolveChromeExecutable() {
-  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
-    return process.env.CHROME_PATH;
-  }
+// Configuración adaptable de Puppeteer para Render y Local
+const puppeteerOptions = {
+  headless: true,
+  defaultViewport: null,
+  args: PUPPETEER_ARGS,
+};
 
-  try {
-    const puppeteer = require('puppeteer');
-    const executablePath = puppeteer.executablePath();
-    if (fs.existsSync(executablePath)) {
-      return executablePath;
-    }
-  } catch {
-    // Chrome no está en la caché de Puppeteer todavía.
-  }
-
-  throw new Error(
-    'No se encontró Chrome compatible. Ejecuta: npx puppeteer browsers install chrome',
-  );
+if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
+  puppeteerOptions.executablePath = process.env.CHROME_PATH;
 }
 
 const whatsappClient = new Client({
@@ -61,12 +51,7 @@ const whatsappClient = new Client({
     remotePath:
       'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
   },
-  puppeteer: {
-    headless: true,
-    defaultViewport: null,
-    args: PUPPETEER_ARGS,
-    executablePath: resolveChromeExecutable(),
-  },
+  puppeteer: puppeteerOptions,
 });
 
 let isWhatsAppReady = false;
@@ -96,7 +81,6 @@ function normalizeDigits(number) {
 function getMexicoNumberVariants(number) {
   let digits = normalizeDigits(number);
 
-  // Número local mexicano de 10 dígitos → agregar código de país
   if (digits.length === 10) {
     digits = `521${digits}`;
   }
@@ -401,6 +385,83 @@ function buildConfirmationReply(servicio, horarioSolicitado) {
   );
 }
 
+// CONTROL DE CUPO Y AFORO
+async function agendarCitaConControlDeCupo({ servicioNombre, clienteNombre, clienteTelefono, fechaHoraStr }) {
+  try {
+    const fechaHoraLimpia = fechaHoraStr.trim().toLowerCase();
+
+    const { data: serviciosData, error: errServicio } = await supabase
+      .from('servicios')
+      .select('id, capacidad_maxima, nombre');
+
+    let capacidadMaxima = 1;
+    let servicioId = null;
+
+    if (!errServicio && serviciosData && serviciosData.length > 0) {
+      const coincide = serviciosData.find(s => 
+        s.nombre.toLowerCase().includes(servicioNombre.toLowerCase().trim()) ||
+        servicioNombre.toLowerCase().trim().includes(s.nombre.toLowerCase())
+      );
+      if (coincide) {
+        capacidadMaxima = coincide.capacidad_maxima || 1;
+        servicioId = coincide.id;
+      }
+    }
+
+    const { data: citasExistentes, error: errCitas } = await supabase
+      .from('citas')
+      .select('id, fecha_hora')
+      .in('estado', ['pendiente', 'confirmada']);
+
+    if (errCitas) {
+      console.error('[Bot] Error al contar citas existentes:', errCitas);
+      return { ok: false, message: 'Ocurrió un error al verificar los horarios disponibles.' };
+    }
+
+    const ocupados = citasExistentes 
+      ? citasExistentes.filter(c => c.fecha_hora && c.fecha_hora.trim().toLowerCase() === fechaHoraLimpia).length 
+      : 0;
+
+    console.log(`[Bot Check] Horario: "${fechaHoraStr}" | Ocupados: ${ocupados} / Capacidad Máxima: ${capacidadMaxima}`);
+
+    if (ocupados >= capacidadMaxima) {
+      console.log(`[Bot] Cupo lleno para "${fechaHoraStr}". (${ocupados}/${capacidadMaxima})`);
+      
+      if (capacidadMaxima > 1) {
+        return {
+          ok: false,
+          message: `⚠️ Lo sentimos, el cupo para la clase a las *${fechaHoraStr}* ya está lleno (${ocupados}/${capacidadMaxima} lugares ocupados).\n\nPor favor, selecciona otro horario o fecha.`
+        };
+      } else {
+        return {
+          ok: false,
+          message: `⚠️ Lo sentimos, el horario de las *${fechaHoraStr}* ya no está disponible.\n\nPor favor, selecciona otra hora.`
+        };
+      }
+    }
+
+    const { error: errInsert } = await supabase.from('citas').insert({
+      cliente_nombre: clienteNombre,
+      cliente_telefono: clienteTelefono,
+      servicio: servicioNombre,
+      servicio_id: servicioId,
+      fecha_hora: fechaHoraStr,
+      estado: 'confirmada'
+    });
+
+    if (errInsert) {
+      console.error('[Bot] Error al insertar cita:', errInsert);
+      return { ok: false, message: 'No pudimos confirmar tu cita en este momento. Por favor, inténtalo de nuevo.' };
+    }
+
+    return { ok: true, capacidadMaxima, ocupados: ocupados + 1 };
+
+  } catch (error) {
+    console.error('[Bot] Error crítico al agendar:', error.message);
+    return { ok: false, message: 'Ocurrió un problema técnico al agendar. Por favor intenta de nuevo.' };
+  }
+}
+
 whatsappClient.on('message', async (msg) => {
   if (msg.fromMe) {
     return;
@@ -464,12 +525,6 @@ whatsappClient.on('message', async (msg) => {
       console.log(`[WhatsApp] Fecha indicada por ${userId}: "${msg.body}"`);
 
       const businessHours = await getBusinessHours();
-      console.log(
-        `[WhatsApp] Horario del negocio: ${businessHours.hora_apertura} - ${businessHours.hora_cierre}`,
-      );
-      console.log(
-        `[WhatsApp] Días laborables: ${businessHours.dias_laborables}`,
-      );
 
       const dayValidation = validateWorkingDay(
         msg.body,
@@ -477,21 +532,15 @@ whatsappClient.on('message', async (msg) => {
       );
 
       if (!dayValidation.valid) {
-        console.log(
-          `[WhatsApp] Día no laborable detectado en: "${msg.body}"`,
-        );
         await msg.reply(dayValidation.reply);
         return;
       }
 
       const militaryTime = extractMilitaryTime(msg.body);
       if (!militaryTime) {
-        console.log(`[WhatsApp] No se detectó hora válida en: "${msg.body}"`);
         await msg.reply(DATE_RETRY_REPLY);
         return;
       }
-
-      console.log(`[WhatsApp] Hora detectada (24h): ${militaryTime}`);
 
       if (
         !isWithinBusinessHours(
@@ -500,40 +549,27 @@ whatsappClient.on('message', async (msg) => {
           businessHours.hora_cierre,
         )
       ) {
-        console.log(
-          `[WhatsApp] Horario ${militaryTime} fuera de jornada (${businessHours.hora_apertura} - ${businessHours.hora_cierre})`,
-        );
         await msg.reply(OUT_OF_HOURS_REPLY);
         return;
       }
 
-      const { error } = await supabase.from('citas').insert({
-        cliente_nombre: msg._data?.notifyName || 'Cliente',
-        cliente_telefono: msg.from,
-        servicio: session.servicio,
-        fecha_hora: msg.body,
+      const resultado = await agendarCitaConControlDeCupo({
+        servicioNombre: session.servicio,
+        clienteNombre: msg._data?.notifyName || 'Cliente',
+        clienteTelefono: msg.from,
+        fechaHoraStr: msg.body
       });
 
-      if (error) {
-        console.error('[WhatsApp] Error al guardar cita en Supabase:', error);
-        await msg.reply(
-          'No pudimos confirmar tu cita en este momento. Por favor, inténtalo de nuevo en unos minutos.',
-        );
+      if (!resultado.ok) {
+        await msg.reply(resultado.message);
         return;
       }
 
-      console.log(
-        `[WhatsApp] Cita guardada en Supabase para ${userId}: ${session.servicio}`,
-      );
-
       await msg.reply(buildConfirmationReply(session.servicio, msg.body));
       sessions.delete(msg.from);
-      console.log(`[WhatsApp] Sesión eliminada para ${userId}`);
-      console.log(`[WhatsApp] Respuesta enviada a ${userId}`);
       return;
     }
 
-    console.log(`[WhatsApp] Estado desconocido (${session.state}), mensaje ignorado.`);
   } catch (error) {
     console.error(`[WhatsApp] Error al responder a ${userId}:`, error.message);
   }
@@ -563,48 +599,14 @@ app.get('/', (_req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cito.mx</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: #F3F4F6;
-      font-family: 'Inter', sans-serif;
-      padding: 24px;
-    }
-
-    .card {
-      background-color: #FFFFFF;
-      border-radius: 8px;
-      padding: 48px 56px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-      text-align: center;
-      max-width: 520px;
-      width: 100%;
-    }
-
-    .message {
-      color: #3B82F6;
-      font-size: 1.25rem;
-      font-weight: 600;
-      line-height: 1.5;
-    }
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; background-color: #F3F4F6; font-family: sans-serif; }
+    .card { background: #fff; padding: 48px; border-radius: 8px; text-align: center; }
+    .message { color: #3B82F6; font-size: 1.25rem; font-weight: 600; }
   </style>
 </head>
 <body>
-  <main class="card">
-    <p class="message">¡Bienvenido a Cito.mx! El motor está en línea.</p>
-  </main>
+  <main class="card"><p class="message">¡Bienvenido a Cito.mx! El motor está en línea.</p></main>
 </body>
 </html>`);
 });
@@ -620,29 +622,6 @@ app.get('/health', (_req, res) => {
   });
 });
 
-app.post('/resend-confirmation', async (_req, res) => {
-  if (!isWhatsAppReady) {
-    res.status(503).json({ error: 'WhatsApp no está conectado.' });
-    return;
-  }
-
-  try {
-    await testSupabaseConnection();
-    confirmationSent = false;
-    await sendAdminConfirmation();
-    res.json({ ok: true, confirmationSent, supabase: isSupabaseConnected });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-function printRecoverySteps() {
-  console.error('\nSi el error persiste, ejecuta en orden:');
-  console.error('  npm run reset:whatsapp');
-  console.error('  npx puppeteer browsers install chrome');
-  console.error('  npm start');
-}
-
 app.listen(PORT, async () => {
   console.log(`Servidor Cito.mx escuchando en http://localhost:${PORT}`);
 
@@ -656,7 +635,6 @@ app.listen(PORT, async () => {
 
   whatsappClient.initialize().catch((error) => {
     console.error('Error al iniciar WhatsApp:', error.message);
-    printRecoverySteps();
     process.exit(1);
   });
 });
