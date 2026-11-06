@@ -23,9 +23,14 @@
                     <p class="text-xs text-slate-400" id="subdominio-tag">Buscando negocio...</p>
                 </div>
             </div>
-            <button onclick="cargarCitas()" class="bg-slate-700 hover:bg-slate-600 text-sm px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
-                <span>🔄</span> <span>Actualizar</span>
-            </button>
+            <div class="flex items-center space-x-2">
+                <button onclick="cargarCitas()" class="bg-slate-700 hover:bg-slate-600 text-sm px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
+                    <span>🔄</span> <span>Actualizar</span>
+                </button>
+                <button onclick="cerrarSesion()" class="bg-rose-900/40 hover:bg-rose-800/60 text-rose-300 border border-rose-800/50 text-sm px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
+                    <span>🚪</span> <span>Salir</span>
+                </button>
+            </div>
         </div>
     </header>
 
@@ -132,81 +137,65 @@
 
     <!-- Script de Lógica Principal -->
     <script>
-        // ⚠️ REEMPLAZA ESTAS DOS LÍNEAS CON TUS CREDENCIALES DE SUPABASE
         const SUPABASE_URL = 'https://pbdprwulwnsjrzvolzut.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
 
         const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         let negocioActual = null;
 
-        // 1. Obtener identificador por URL demo, subdominio o dominio propio
-        function obtenerIdentificadorHost() {
-            const params = new URLSearchParams(window.location.search);
-            
-            if (params.has('demo')) {
-                return params.get('demo').toLowerCase().trim();
-            }
-
-            const host = window.location.hostname.toLowerCase();
-            const partes = host.split('.');
-
-            if (host === 'localhost' || host === '127.0.0.1' || host === 'cito.mx' || host === 'www.cito.mx') {
-                return 'barberia'; // Negocio default en desarrollo o en dominio base
-            }
-
-            if (partes.length >= 3) {
-                return partes[0]; // Captura subdominio
-            }
-
-            return host; // Captura dominio personalizado
-        }
-
-        // 2. Inicializar la app y consultar la tabla 'negocios'
+        // 1. Inicializar la app y validar Autenticación con Supabase Auth
         async function inicializarApp() {
-            const identificador = obtenerIdentificadorHost();
-            
             const elemFecha = document.getElementById('fecha-actual');
             if (elemFecha) {
                 elemFecha.innerText = new Date().toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
             }
 
-            // Consulta permisos en la tabla negocios por subdominio
-            let { data: negocio } = await _supabase
+            // Verificar si el usuario ha iniciado sesión
+            const { data: { user }, error: authError } = await _supabase.auth.getUser();
+
+            if (authError || !user) {
+                console.warn("🔒 Usuario no autenticado. Redirigiendo a login.html...");
+                window.location.href = "login.html";
+                return;
+            }
+
+            // Consulta el negocio vinculado al user.id autenticado
+            let { data: negocio, error } = await _supabase
                 .from('negocios')
                 .select('*')
-                .eq('subdominio', identificador)
+                .eq('user_id', user.id)
                 .maybeSingle();
 
-            // Fallback: consulta por dominio_personalizado si no lo encuentra por subdominio
+            // Fallback en caso de desarrollo (si aún no se ha vinculado user_id al negocio #1)
             if (!negocio) {
-                const { data: negocioDom } = await _supabase
+                const { data: negocioFallback } = await _supabase
                     .from('negocios')
                     .select('*')
-                    .eq('dominio_personalizado', identificador)
+                    .eq('id', 1)
                     .maybeSingle();
-                negocio = negocioDom;
+                negocio = negocioFallback;
             }
 
             if (!negocio) {
                 document.getElementById('nombre-negocio').innerText = "Negocio no encontrado";
-                document.getElementById('subdominio-tag').innerText = `@${identificador}`;
+                document.getElementById('subdominio-tag').innerText = `@desconocido`;
                 document.getElementById('contenedor-citas').innerHTML = `
                     <div class="bg-slate-800 p-6 rounded-xl border border-amber-800/50 text-amber-300 col-span-2">
-                        ⚠️ No se encontró ningún negocio registrado con el identificador: <b>"${identificador}"</b>.
+                        ⚠️ No se encontró ningún negocio vinculado a tu usuario. Asegúrate de asignar tu <b>user_id</b> en Supabase.
                     </div>`;
                 return;
             }
 
             negocioActual = negocio;
             document.getElementById('nombre-negocio').innerText = negocio.nombre;
-            document.getElementById('subdominio-tag').innerText = `@${negocio.subdominio}`;
+            document.getElementById('subdominio-tag').innerText = `@${negocio.subdominio || 'panel'}`;
             document.getElementById('logo-placeholder').innerText = negocio.nombre.charAt(0).toUpperCase();
 
             cargarCitas(negocio.id);
             cargarAjustes();
         }
 
-        // 3. Consultar y renderizar la agenda de citas con aforo agrupado
+        // 2. Consultar y renderizar la agenda de citas con aforo agrupado
         async function cargarCitas(negocioId) {
             const idParaConsultar = negocioId || negocioActual?.id;
             const contenedor = document.getElementById('contenedor-citas');
@@ -254,11 +243,9 @@
                     const esConfirmada = cita.estado === 'confirmada';
                     const badgeColor = esConfirmada ? 'bg-emerald-950 text-emerald-300 border-emerald-800' : 'bg-amber-950 text-amber-300 border-amber-800';
 
-                    // Obtener capacidad o asignar fallback por tipo de negocio
-                    const capacidad = mapaCapacidades[cita.servicio_id] || (negocioActual?.subdominio === 'pilates' ? 6 : 1);
+                    const capacidad = mapaCapacidades[cita.servicio_id] || 1;
                     const esGrupal = capacidad > 1;
 
-                    // Conteo dinámico de reservaciones en el mismo horario
                     const inscritos = citas.filter(c => c.fecha_hora === cita.fecha_hora).length;
                     const porcentajeLleno = Math.min((inscritos / capacidad) * 100, 100);
 
@@ -305,16 +292,14 @@
             }
         }
 
-        // 4. Cargar los ajustes guardados de la base de datos al formulario
+        // 3. Cargar los ajustes guardados de la base de datos al formulario
         async function cargarAjustes() {
             if (!negocioActual) return;
 
-            // Cargar plantilla guardada en 'negocios'
             if (negocioActual.plantilla_recordatorio) {
                 document.getElementById('input-plantilla').value = negocioActual.plantilla_recordatorio;
             }
 
-            // Cargar capacidad máxima guardada en 'servicios'
             const { data: servicio } = await _supabase
                 .from('servicios')
                 .select('capacidad_maxima')
@@ -327,12 +312,17 @@
             }
         }
 
-        // 5. Guardar los cambios del formulario directamente en Supabase
+        // 4. Guardar los cambios del formulario directamente en Supabase
         async function guardarAjustes(event) {
             event.preventDefault();
             const btn = document.getElementById('btn-guardar');
             const feedback = document.getElementById('mensaje-feedback');
-            
+
+            if (!negocioActual || !negocioActual.id) {
+                alert("Error: No se ha detectado el ID del negocio actual.");
+                return;
+            }
+
             btn.disabled = true;
             btn.innerText = "Guardando...";
 
@@ -340,7 +330,7 @@
             const nuevaPlantilla = document.getElementById('input-plantilla').value;
 
             try {
-                // Actualizar plantilla en la tabla negocios
+                // A. Actualizar la plantilla en la tabla 'negocios'
                 const { error: errNegocio } = await _supabase
                     .from('negocios')
                     .update({ plantilla_recordatorio: nuevaPlantilla })
@@ -348,7 +338,7 @@
 
                 if (errNegocio) throw errNegocio;
 
-                // Actualizar capacidad máxima en la tabla servicios
+                // B. Actualizar la capacidad en la tabla 'servicios'
                 const { error: errServicio } = await _supabase
                     .from('servicios')
                     .update({ capacidad_maxima: nuevaCapacidad })
@@ -356,23 +346,27 @@
 
                 if (errServicio) throw errServicio;
 
-                // Actualizar la variable local para sincronía
                 negocioActual.plantilla_recordatorio = nuevaPlantilla;
 
-                // Notificación visual de éxito
+                feedback.innerText = "¡Guardado con éxito en Supabase!";
                 feedback.classList.remove('hidden');
                 setTimeout(() => feedback.classList.add('hidden'), 3000);
 
-                // Recargar las citas para reflejar cambios visuales en las barras de aforo
                 await cargarCitas(negocioActual.id);
 
             } catch (err) {
-                console.error("Error al guardar ajustes:", err);
-                alert("Ocurrió un error al guardar los ajustes: " + err.message);
+                console.error("❌ Error al guardar en Supabase:", err);
+                alert("Ocurrió un error al guardar: " + (err.message || JSON.stringify(err)));
             } finally {
                 btn.disabled = false;
                 btn.innerText = "💾 Guardar Configuración";
             }
+        }
+
+        // 5. Función para cerrar sesión
+        async function cerrarSesion() {
+            await _supabase.auth.signOut();
+            window.location.href = "login.html";
         }
 
         // Ejecutar la aplicación cuando el HTML esté cargado

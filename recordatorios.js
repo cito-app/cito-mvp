@@ -1,9 +1,16 @@
 'use strict';
 
+require('dotenv').config();
+
 const fs = require('fs');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
 
 // Configuración de Supabase
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
@@ -95,28 +102,36 @@ function isCitaForToday(fechaHora) {
 }
 
 /**
- * Procesa la plantilla de mensaje reemplazando etiquetas dinámicas.
+ * Extrae la plantilla del negocio y reemplaza las etiquetas dinámicas por valores reales.
  */
 function parsearPlantilla(plantillaBase, cita) {
   let mensaje = plantillaBase;
 
-  // Plantilla de respaldo si el negocio no ha definido una
+  // Plantilla por defecto si no viene de Supabase
   if (!mensaje || mensaje.trim() === '') {
-    mensaje = '¡Hola {cliente}! Te recordamos tu cita de hoy para el servicio de: {servicio}. ⏰ Te esperamos. Si tienes algún contratiempo, por favor avísanos por este medio.';
+    mensaje = 'Hola {cliente}, te recordamos tu cita de {servicio} programada para el {fecha} a las {hora}. ⏰ ¡Te esperamos!';
   }
 
-  const nombre = cita.nombre || cita.cliente_nombre || 'Cliente';
-  const servicio = cita.servicio || 'tu servicio';
+  const nombreCliente = cita.cliente_nombre || cita.nombre || 'Cliente';
+  const nombreServicio = cita.servicio || 'tu cita';
 
-  // Extraer fecha y hora si vienen juntas en formato "YYYY-MM-DD HH:MM" o similar
-  const partesFechaHora = String(cita.fecha_hora || '').split(' ');
-  const fechaStr = partesFechaHora[0] || 'hoy';
-  const horaStr = partesFechaHora[1] || '';
+  let fechaFormateada = cita.fecha_hora || 'hoy';
+  let horaFormateada = '';
 
-  mensaje = mensaje.replace(/{cliente}/g, nombre);
-  mensaje = mensaje.replace(/{servicio}/g, servicio);
-  mensaje = mensaje.replace(/{fecha}/g, fechaStr);
-  mensaje = mensaje.replace(/{hora}/g, horaStr);
+  if (cita.fecha_hora && cita.fecha_hora.includes(' ')) {
+    const partes = cita.fecha_hora.split(' ');
+    fechaFormateada = partes[0];
+    horaFormateada = partes.slice(1).join(' ');
+  } else {
+    horaFormateada = cita.fecha_hora || '';
+  }
+
+  // Reemplazos ampliados para soportar {cliente} y {nombre}
+  mensaje = mensaje.replace(/{cliente}/g, nombreCliente);
+  mensaje = mensaje.replace(/{nombre}/g, nombreCliente);
+  mensaje = mensaje.replace(/{servicio}/g, nombreServicio);
+  mensaje = mensaje.replace(/{fecha}/g, fechaFormateada);
+  mensaje = mensaje.replace(/{hora}/g, horaFormateada);
 
   return mensaje;
 }
@@ -169,28 +184,47 @@ const whatsappClient = new Client({
 });
 
 /**
- * Consulta las citas pendientes/confirmadas trayendo la información del negocio asignado.
+ * Consulta las citas uniendo con configuracion_negocio para obtener plantilla_recordatorio.
  */
 async function fetchPendingCitasForToday() {
-  const { data, error } = await supabase
+  // 1. Obtenemos las citas
+  const { data: citas, error: errorCitas } = await supabase
     .from('citas')
-    .select(`
-      *,
-      negocios (
-        id,
-        nombre,
-        plantilla_recordatorio
-      )
-    `);
+    .select('*');
 
-  if (error) {
-    throw new Error(`Error al consultar citas: ${error.message}`);
+  if (errorCitas) {
+    throw new Error(`Error al consultar citas: ${errorCitas.message}`);
   }
 
-  // Filtrar las que estén pendientes/confirmadas y correspondan al día de hoy
-  const citasHoy = (data || []).filter((cita) => {
+  // 2. Obtenemos las plantillas de configuracion_negocio
+  const { data: configs, error: errorConfig } = await supabase
+    .from('configuracion_negocio')
+    .select('negocio_id, plantilla_recordatorio');
+
+  if (errorConfig) {
+    console.warn('[Recordatorio] No se pudo cargar configuracion_negocio:', errorConfig.message);
+  }
+
+  // Mapa rápido de plantillas por negocio_id
+  const configMap = new Map();
+  if (configs) {
+    configs.forEach((c) => configMap.set(c.negocio_id, c.plantilla_recordatorio));
+  }
+
+  // Plantilla global por defecto (si la cita no tiene negocio_id asignado)
+  const defaultPlantilla = configs && configs.length > 0 ? configs[0].plantilla_recordatorio : null;
+
+  // 3. Cruzar datos y filtrar para el día de hoy
+  const citasHoy = (citas || []).filter((cita) => {
     const estadoValido = cita.estado === 'pendiente' || cita.estado === 'confirmada';
     return estadoValido && isCitaForToday(cita.fecha_hora);
+  }).map((cita) => {
+    // Asignar plantilla correspondiente
+    const plantilla = configMap.get(cita.negocio_id) || defaultPlantilla;
+    return {
+      ...cita,
+      plantilla_recordatorio: plantilla
+    };
   });
 
   return citasHoy;
@@ -228,9 +262,10 @@ async function sendReminders(citas) {
       continue;
     }
 
-    // Obtener la plantilla asociada al negocio de la cita (si existe)
-    const plantillaNegocio = cita.negocios?.plantilla_recordatorio;
-    const message = parsearPlantilla(plantillaNegocio, cita);
+    // Tomar la plantilla asociada que extrajimos de configuracion_negocio
+    const message = parsearPlantilla(cita.plantilla_recordatorio, cita);
+
+    console.log(`[Recordatorio] Mensaje generado: "${message}"`);
 
     try {
       await sendReminderToChat(chatId, message, nombre);

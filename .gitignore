@@ -1,4 +1,15 @@
-node_modules/
+# Archivos de entorno y credenciales
 .env
+.env.local
+*.env
+
+# Dependencias
+node_modules/
+
+# Logs
+*.log
+
+node_modules/
 .wwebjs_auth/
 .wwebjs_cache/
+.env

@@ -9,6 +9,7 @@ const express = require('express');
 const qrcode = require('qrcode-terminal');
 const { createClient } = require('@supabase/supabase-js');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const { runRecordatorios } = require('./services/recordatoriosRunner');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
@@ -50,12 +51,18 @@ if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
 
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: 'cito-mx' }),
+  webVersionCache: {
+    type: 'remote',
+    remotePath:
+      'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+  },
   puppeteer: puppeteerOptions,
 });
 
 let isWhatsAppReady = false;
 let isSupabaseConnected = false;
 let confirmationSent = false;
+let recordatoriosEnProceso = false;
 
 async function testSupabaseConnection() {
   const { data, error } = await supabase.from('negocios').select('*').limit(1);
@@ -618,7 +625,40 @@ app.get('/health', (_req, res) => {
     connectedNumber: whatsappClient.info?.wid?.user || null,
     adminNumber: ADMIN_NUMBER ? normalizeDigits(ADMIN_NUMBER) : null,
     confirmationSent,
+    recordatoriosEnProceso,
   });
+});
+
+app.get('/ejecutar-recordatorios', async (_req, res) => {
+  if (!isWhatsAppReady) {
+    res.status(503).json({
+      ok: false,
+      error: 'WhatsApp no está conectado. Espera a que el cliente esté listo.',
+    });
+    return;
+  }
+
+  if (recordatoriosEnProceso) {
+    res.status(409).json({
+      ok: false,
+      error: 'Ya hay un proceso de recordatorios en ejecución.',
+    });
+    return;
+  }
+
+  recordatoriosEnProceso = true;
+
+  try {
+    console.log('[Recordatorio] Inicio manual vía /ejecutar-recordatorios');
+    const result = await runRecordatorios({ supabase, whatsappClient });
+    console.log('[Recordatorio] Finalizado:', result);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error('[Recordatorio] Error:', error);
+    res.status(500).json({ ok: false, error: error.message });
+  } finally {
+    recordatoriosEnProceso = false;
+  }
 });
 
 app.listen(PORT, async () => {
