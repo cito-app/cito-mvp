@@ -51,10 +51,6 @@ const whatsappClient = new Client({
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--disable-accelerated-2d-canvas',
-      '--no-first-run',
-      '--no-zygote',
-      '--single-process',
       '--disable-gpu',
     ],
   },
@@ -161,7 +157,7 @@ whatsappClient.on('qr', async (qr) => {
 });
 
 whatsappClient.on('authenticated', () => {
-  console.log('Autenticación de WhatsApp completada.');
+  console.log('WhatsApp AUTENTICADO');
 });
 
 whatsappClient.on('auth_failure', (message) => {
@@ -584,6 +580,7 @@ whatsappClient.on('message', async (msg) => {
 
 whatsappClient.on('ready', async () => {
   isWhatsAppReady = true;
+  console.log('WhatsApp LISTO (ready)');
   console.log('Cliente de WhatsApp conectado y listo.');
 
   try {
