@@ -15,8 +15,31 @@ process.on('unhandledRejection', (err) => {
   console.error('Error no capturado en promesa:', err.message);
 });
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
+require('dotenv').config();
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+// Token para proteger /ejecutar-recordatorios y la página del QR.
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Faltan SUPABASE_URL y/o SUPABASE_KEY en las variables de entorno.');
+  process.exit(1);
+}
+
+if (!ADMIN_TOKEN) {
+  console.warn(
+    '⚠️  ADMIN_TOKEN no está configurado: el QR y /ejecutar-recordatorios quedan SIN protección.',
+  );
+}
+
+// Acepta el token en el header "x-admin-token" o en ?token=...
+function requireAdminToken(req, res, next) {
+  if (!ADMIN_TOKEN) return next();
+  const provided = req.get('x-admin-token') || req.query.token;
+  if (provided === ADMIN_TOKEN) return next();
+  res.status(401).json({ ok: false, error: 'No autorizado' });
+}
 
 function normalizeSupabaseUrl(url) {
   return url.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
@@ -38,24 +61,67 @@ const chromeExecutablePath =
 
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: 'cito-mx' }),
-  webVersionCache: {
-    type: 'remote',
-    remotePath:
-      'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
-  },
+  // Sin WA_WEB_VERSION se usa la versión que trae whatsapp-web.js (recomendado con @latest).
+  // El remotePath con {version} sin fijar versión puede provocar recargas de página
+  // ("Execution context was destroyed") si el HTML cacheado no coincide.
+  ...(process.env.WA_WEB_VERSION
+    ? {
+        webVersion: process.env.WA_WEB_VERSION,
+        webVersionCache: {
+          type: 'remote',
+          remotePath:
+            'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+        },
+      }
+    : { webVersionCache: { type: 'none' } }),
+  authTimeoutMs: 120000, // la sincronización inicial en 512 MB es lenta
+  takeoverOnConflict: true,
   puppeteer: {
     headless: true,
-    defaultViewport: null,
+    defaultViewport: { width: 800, height: 600 },
+    protocolTimeout: 180000,
     ...(chromeExecutablePath ? { executablePath: chromeExecutablePath } : {}),
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--no-zygote',
+      '--no-first-run',
+      '--disable-extensions',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-background-networking',
+      '--disable-component-update',
+      '--mute-audio',
+      '--disable-software-rasterizer',
+      // Un solo proceso renderer: es lo que más RAM ahorra en Chromium.
+      '--renderer-process-limit=1',
+      '--disable-site-isolation-trials',
+      '--disable-features=site-per-process,Translate,MediaRouter,OptimizationHints',
       '--js-flags=--max-old-space-size=256',
     ],
   },
 });
+
+// ---- Diagnóstico de memoria (RAM total del contenedor, incluye Chromium) ----
+function readContainerMemoryMB() {
+  for (const file of ['/sys/fs/cgroup/memory.current', '/sys/fs/cgroup/memory/memory.usage_in_bytes']) {
+    try {
+      return Math.round(Number(fs.readFileSync(file, 'utf8').trim()) / 1024 / 1024);
+    } catch (_) {
+      /* siguiente */
+    }
+  }
+  return null;
+}
+
+function logMemory(tag) {
+  const nodeMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
+  console.log(`[Memoria] ${tag} | Node RSS: ${nodeMB} MB | Contenedor: ${readContainerMemoryMB() ?? 'n/d'} MB`);
+}
+
+setInterval(() => logMemory('periódico'), 30000).unref();
 
 let isWhatsAppReady = false;
 let isSupabaseConnected = false;
@@ -153,13 +219,61 @@ async function sendAdminConfirmation() {
   console.log(`ID del mensaje: ${sentMessage.id._serialized}`);
 }
 
+let lastQr = null;
+let qrCount = 0;
+let readyFallbackTimer = null;
+
 whatsappClient.on('qr', async (qr) => {
-    console.log('--- CÓDIGO QR GENERADO ---');
-    qrCodeImageData = await QRCode.toDataURL(qr);
+  if (qr === lastQr) return; // evita procesar dos veces el mismo QR
+  lastQr = qr;
+  qrCount += 1;
+  console.log(`--- CÓDIGO QR GENERADO (#${qrCount}, pid ${process.pid}) ---`);
+  qrCodeImageData = await QRCode.toDataURL(qr);
 });
 
+whatsappClient.on('loading_screen', (percent, message) => {
+  console.log(`[WhatsApp] Cargando ${percent}% ${message || ''}`);
+  logMemory(`sync ${percent}%`);
+});
+
+whatsappClient.on('change_state', (state) => {
+  console.log(`[WhatsApp] Estado: ${state}`);
+});
+
+// Hay versiones de whatsapp-web.js donde 'ready' no llega aunque la sesión ya esté
+// CONNECTED. Si pasa, marcamos listo manualmente tras verificar el estado.
+function startReadyFallback() {
+  if (readyFallbackTimer) return;
+  let attempts = 0;
+  readyFallbackTimer = setInterval(async () => {
+    attempts += 1;
+    if (isWhatsAppReady || attempts > 36) {
+      clearInterval(readyFallbackTimer);
+      readyFallbackTimer = null;
+      return;
+    }
+    try {
+      const state = await whatsappClient.getState();
+      if (state === 'CONNECTED' && attempts >= 6) {
+        console.warn('[WhatsApp] "ready" no se disparó, pero el estado es CONNECTED. Marcando listo.');
+        clearInterval(readyFallbackTimer);
+        readyFallbackTimer = null;
+        onWhatsAppReady('fallback');
+      }
+    } catch (_) {
+      /* página aún navegando; reintenta */
+    }
+  }, 5000);
+}
+
+let isAuthenticated = false;
+
 whatsappClient.on('authenticated', () => {
+  isAuthenticated = true;
   console.log('WhatsApp AUTENTICADO');
+  qrCodeImageData = '';
+  logMemory('authenticated');
+  startReadyFallback();
 });
 
 whatsappClient.on('auth_failure', (message) => {
@@ -580,10 +694,13 @@ whatsappClient.on('message', async (msg) => {
   }
 });
 
-whatsappClient.on('ready', async () => {
+whatsappClient.on('ready', () => onWhatsAppReady('evento ready'));
+
+async function onWhatsAppReady(origen) {
+  if (isWhatsAppReady) return;
   isWhatsAppReady = true;
-  console.log('WhatsApp LISTO (ready)');
-  console.log('Cliente de WhatsApp conectado y listo.');
+  console.log(`WhatsApp LISTO (${origen})`);
+  logMemory('ready');
 
   try {
     await testSupabaseConnection();
@@ -591,14 +708,15 @@ whatsappClient.on('ready', async () => {
   } catch (error) {
     console.error('Error en la conexión inicial:', error.message);
   }
-});
+}
 
 whatsappClient.on('disconnected', (reason) => {
   isWhatsAppReady = false;
   console.warn('Cliente de WhatsApp desconectado:', reason);
+  logMemory('disconnected');
 });
 
-app.get('/', (req, res) => {
+app.get('/', requireAdminToken, (req, res) => {
     if (qrCodeImageData) {
         res.send(`
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;">
@@ -626,10 +744,14 @@ app.get('/health', (_req, res) => {
     adminNumber: ADMIN_NUMBER ? normalizeDigits(ADMIN_NUMBER) : null,
     confirmationSent,
     recordatoriosEnProceso,
+    memoria: {
+      nodeRssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      contenedorMB: readContainerMemoryMB(),
+    },
   });
 });
 
-app.get('/ejecutar-recordatorios', async (_req, res) => {
+app.get('/ejecutar-recordatorios', requireAdminToken, async (_req, res) => {
   if (!isWhatsAppReady) {
     res.status(503).json({
       ok: false,
@@ -676,10 +798,42 @@ app.listen(PORT, async () => {
   }
   whatsAppInitializeStarted = true;
 
-  console.log('Iniciando cliente de WhatsApp...\n');
+  console.log(`Iniciando cliente de WhatsApp (pid ${process.pid})...\n`);
+  logMemory('antes de initialize');
+  initializeWhatsApp(1);
+});
 
-  whatsappClient.initialize().catch((error) => {
-    console.error('Error al iniciar WhatsApp:', error.message);
-    process.exit(1);
-  });
+// Reintenta en el mismo proceso en vez de process.exit(1): un reinicio del
+// contenedor en Render borra la sesión (no hay disco) y obliga a escanear otra vez.
+const MAX_INIT_ATTEMPTS = 3;
+
+async function initializeWhatsApp(attempt) {
+  try {
+    await whatsappClient.initialize();
+  } catch (error) {
+    console.error(`Error al iniciar WhatsApp (intento ${attempt}/${MAX_INIT_ATTEMPTS}):`, error.message);
+    // Tras escanear, WhatsApp Web recarga la página y a veces lanza
+    // "Execution context was destroyed". Si ya autenticó, no destruimos el
+    // cliente: dejamos que termine la sincronización (y el fallback de 'ready').
+    if (isWhatsAppReady || isAuthenticated) {
+      console.warn('Error tras autenticar; se espera a que termine la sincronización.');
+      startReadyFallback();
+      return;
+    }
+    if (attempt >= MAX_INIT_ATTEMPTS) {
+      console.error('Se agotaron los reintentos. Saliendo para que Render reinicie.');
+      process.exit(1);
+    }
+    try {
+      await whatsappClient.destroy();
+    } catch (_) {
+      /* el navegador puede ya estar cerrado */
+    }
+    lastQr = null;
+    setTimeout(() => initializeWhatsApp(attempt + 1), 10000);
+  }
+}
+
+process.on('uncaughtException', (err) => {
+  console.error('Excepción no capturada:', err.message);
 });
