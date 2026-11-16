@@ -11,6 +11,10 @@ const { createClient } = require('@supabase/supabase-js');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { runRecordatorios } = require('./services/recordatoriosRunner');
 
+process.on('unhandledRejection', (err) => {
+  console.error('Error no capturado en promesa:', err.message);
+});
+
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://pbdprwulwnsjrzvolzut.supabase.co/rest/v1/';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_Rc6zXAMP7diNd2DHdkPp6Q_IRRUpX9I';
 
@@ -27,27 +31,10 @@ const ADMIN_NUMBER = process.env.ADMIN_NUMBER;
 const SUCCESS_MESSAGE =
   '¡Conexión exitosa! 🚀 El motor de Cito.mx está vivo, conectado a Supabase y listo para agendar. ¡Reserva confirmada!';
 
-const PUPPETEER_ARGS = [
-  '--no-sandbox',
-  '--disable-setuid-sandbox',
-  '--disable-dev-shm-usage',
-  '--disable-accelerated-2d-canvas',
-  '--no-first-run',
-  '--no-zygote',
-  '--single-process',
-  '--disable-gpu'
-];
-
-// Configuración adaptable de Puppeteer para Render y Local
-const puppeteerOptions = {
-  headless: true,
-  defaultViewport: null,
-  args: PUPPETEER_ARGS,
-};
-
-if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
-  puppeteerOptions.executablePath = process.env.CHROME_PATH;
-}
+const chromeExecutablePath =
+  process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)
+    ? process.env.CHROME_PATH
+    : undefined;
 
 const whatsappClient = new Client({
   authStrategy: new LocalAuth({ clientId: 'cito-mx' }),
@@ -56,7 +43,21 @@ const whatsappClient = new Client({
     remotePath:
       'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
   },
-  puppeteer: puppeteerOptions,
+  puppeteer: {
+    headless: true,
+    defaultViewport: null,
+    ...(chromeExecutablePath ? { executablePath: chromeExecutablePath } : {}),
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-gpu',
+    ],
+  },
 });
 
 let isWhatsAppReady = false;
