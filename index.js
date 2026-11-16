@@ -52,6 +52,7 @@ const whatsappClient = new Client({
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--js-flags=--max-old-space-size=256',
     ],
   },
 });
@@ -60,6 +61,7 @@ let isWhatsAppReady = false;
 let isSupabaseConnected = false;
 let confirmationSent = false;
 let recordatoriosEnProceso = false;
+let whatsAppInitializeStarted = false;
 
 async function testSupabaseConnection() {
   const { data, error } = await supabase.from('negocios').select('*').limit(1);
@@ -667,6 +669,12 @@ app.listen(PORT, async () => {
   } catch (error) {
     console.error('Supabase no respondió al arrancar:', error.message);
   }
+
+  if (whatsAppInitializeStarted) {
+    console.warn('whatsappClient.initialize() ya fue llamado; no se invoca de nuevo.');
+    return;
+  }
+  whatsAppInitializeStarted = true;
 
   console.log('Iniciando cliente de WhatsApp...\n');
 
