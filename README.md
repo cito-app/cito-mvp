@@ -38,13 +38,15 @@ El token va en el header `x-admin-token` o como `?token=...`.
 | `NODE_OPTIONS` | recomendada en Render | `--max-old-space-size=160` (deja RAM a Chromium) |
 | `TZ` | recomendada | `America/Mexico_City` para que "hoy" en los recordatorios sea la fecha de México |
 | `WA_WEB_VERSION` | no | Fija una versión de WhatsApp Web; sin ella se usa la que trae la librería |
+| `WWEBJS_DATA_PATH` | recomendada en Render | Carpeta de la sesión de WhatsApp en el disco persistente (`/var/data/wwebjs`) |
 | `CHROME_PATH` | no | Ruta a Chrome si no se usa el que instala Puppeteer |
 
 ## Despliegue (Render, plan gratuito)
 
 - Build: `npm install` (el `postinstall` descarga Chrome).
 - Start: `npm start` o `node index.js` con `NODE_OPTIONS` configurado.
-- Límites: 512 MB de RAM y **sin disco persistente**. Cada reinicio del contenedor borra la sesión (`.wwebjs_auth/`) y hay que escanear el QR otra vez.
+- Requiere la instancia `1c-2g` (2 GB): con WhatsApp conectado el contenedor usa ~1 GB. Con 512 MB se reinicia por falta de memoria.
+- Disco persistente de 1 GB montado en `/var/data` + `WWEBJS_DATA_PATH=/var/data/wwebjs`: la sesión sobrevive a deploys y reinicios.
 - Los logs `[Memoria]` muestran la RAM del contenedor durante la sincronización (`loading_screen`).
 
 ## Local

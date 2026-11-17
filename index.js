@@ -62,7 +62,12 @@ const chromeExecutablePath =
     : undefined;
 
 const whatsappClient = new Client({
-  authStrategy: new LocalAuth({ clientId: 'cito-mx' }),
+  authStrategy: new LocalAuth({
+    clientId: 'cito-mx',
+    // En Render, apunta a un disco persistente (ej. /var/data/wwebjs) para no
+    // perder la sesión en cada deploy/reinicio.
+    ...(process.env.WWEBJS_DATA_PATH ? { dataPath: process.env.WWEBJS_DATA_PATH } : {}),
+  }),
   // Sin WA_WEB_VERSION se usa la versión que trae whatsapp-web.js (recomendado con @latest).
   // El remotePath con {version} sin fijar versión puede provocar recargas de página
   // ("Execution context was destroyed") si el HTML cacheado no coincide.
