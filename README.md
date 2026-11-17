@@ -1,75 +1,57 @@
-# 🦷 Cito.mx - Tu Sitio de Citas
+# Cito.mx — Bot de citas por WhatsApp
 
-Sistema de agendamiento de citas white-label para negocios mexicanos.
+Bot de agendamiento y recordatorios por **WhatsApp** (whatsapp-web.js + Puppeteer/Chromium) con Supabase. No usa Twilio ni SMS.
 
-## 🎯 Propuesta de Valor
+> La versión web anterior (Next.js + Twilio) está archivada en la rama `legacy-next`.
 
-Plataforma para controlar tus citas con página personalizada y confirmación automática por SMS. Desde $300/mes.
+## Componentes
 
-## 📊 Estado del Proyecto
+| Archivo | Qué hace |
+|---|---|
+| `index.js` | Servidor Express + cliente WhatsApp: flujo de agendado (servicio → fecha/hora), control de cupo, endpoints |
+| `services/recordatoriosRunner.js` | Envía los recordatorios de las citas del día |
+| `index.html` | Panel de citas (Supabase en el navegador) |
+| `login.html` | Acceso de administrador (Supabase Auth) |
+| `scripts/` | Utilidades locales: reiniciar la sesión de WhatsApp, detener el servidor |
 
-**Fase actual:** Base de Datos Completa (Semana 2/14)
+Tablas en Supabase: `negocios`, `citas`, `servicios`, `configuracion_negocio`.
 
-**Progreso:** 15/128 horas (11.7%)
+## Endpoints
 
-**Inversión:** $690.27 MXN
+| Ruta | Protección | Uso |
+|---|---|---|
+| `GET /` | `ADMIN_TOKEN` | Muestra el QR para vincular WhatsApp |
+| `GET /health` | pública | Estado de WhatsApp/Supabase y memoria |
+| `GET /ejecutar-recordatorios` | `ADMIN_TOKEN` | Lo dispara cron-job.org cada 10 min |
 
-## 🏗️ Stack Tecnológico
+El token va en el header `x-admin-token` o como `?token=...`.
 
-- **Frontend:** Next.js 14 + TypeScript + Tailwind CSS
-- **Backend:** Supabase (PostgreSQL + Auth + Storage)
-- **Pagos:** Stripe
-- **SMS:** Twilio
-- **Hosting:** Siteground
+## Variables de entorno
 
-## 📂 Estructura del Proyecto
+| Variable | Obligatoria | Descripción |
+|---|---|---|
+| `SUPABASE_URL` | sí | `https://gyfximoxybmkszltzdoj.supabase.co` (proyecto cito-production) |
+| `SUPABASE_KEY` | sí | **Secret key** (`sb_secret_…`, Settings → API Keys). Con RLS activo, la publishable no tiene acceso |
+| `NEGOCIO_ID` | no | Negocio al que se asignan las citas del bot (default `1`) |
+| `ADMIN_TOKEN` | recomendada | Si falta, el QR y los recordatorios quedan sin protección |
+| `ADMIN_NUMBER` | no | Número que recibe la confirmación al conectar |
+| `NODE_OPTIONS` | recomendada en Render | `--max-old-space-size=160` (deja RAM a Chromium) |
+| `TZ` | recomendada | `America/Mexico_City` para que "hoy" en los recordatorios sea la fecha de México |
+| `WA_WEB_VERSION` | no | Fija una versión de WhatsApp Web; sin ella se usa la que trae la librería |
+| `CHROME_PATH` | no | Ruta a Chrome si no se usa el que instala Puppeteer |
+
+## Despliegue (Render, plan gratuito)
+
+- Build: `npm install` (el `postinstall` descarga Chrome).
+- Start: `npm start` o `node index.js` con `NODE_OPTIONS` configurado.
+- Límites: 512 MB de RAM y **sin disco persistente**. Cada reinicio del contenedor borra la sesión (`.wwebjs_auth/`) y hay que escanear el QR otra vez.
+- Los logs `[Memoria]` muestran la RAM del contenedor durante la sincronización (`loading_screen`).
+
+## Local
+
+```bash
+cp .env.example .env   # o crea .env con las variables de arriba
+npm install
+npm start
+# abre http://localhost:3000/?token=TU_TOKEN y escanea el QR
 ```
-cito-mvp/
-├── app/                    # Next.js pages
-├── components/             # Componentes reutilizables
-├── lib/                    # Utilidades (supabase client)
-├── docs/                   # Documentación
-│   ├── database/          # Esquemas y queries
-│   ├── api/               # Documentación API
-│   └── setup/             # Guías de instalación
-├── public/                # Archivos estáticos
-└── .env.local            # Variables de entorno
-```
-
-## 🗄️ Base de Datos
-
-### Tablas Principales
-
-- **users** - Negocios registrados
-- **availability** - Horarios de atención
-- **appointments** - Citas agendadas
-
-Ver documentación completa: [docs/database/schema.md](docs/database/schema.md)
-
-## 🚀 Próximos Pasos
-
-**Semana 3:** Sistema de registro y login
-**Semana 4:** Dashboard y perfil
-**Semana 5-6:** Personalización white-label
-
-## 📝 Documentación
-
-- [Database Schema](docs/database/schema.md)
-- [Queries Útiles](docs/database/queries.md)
-- [Setup Local](docs/setup/local-dev.md)
-
-## 💰 Modelo de Negocio
-
-**Plan Básico:** $300 MXN/mes
-- 40 SMS incluidos
-- Página personalizada
-- Citas ilimitadas
-
-**Plan Premium:** $600 MXN/mes (Fase 2)
-- 100 SMS incluidos
-- Dominio personalizado
-- Recordatorios múltiples
-
-## 📧 Contacto
-
-Proyecto: Cito.mx - Tu Sitio de Citas
