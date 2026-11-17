@@ -124,9 +124,17 @@ async function fetchPendingCitasForToday(supabase) {
     console.warn('[Recordatorio] No se pudo cargar configuracion_negocio:', errorConfig.message);
   }
 
+  // El panel guarda la plantilla en negocios.plantilla_recordatorio; tiene prioridad.
+  const { data: negocios } = await supabase.from('negocios').select('id, plantilla_recordatorio');
+
   const configMap = new Map();
   if (configs) {
     configs.forEach((c) => configMap.set(c.negocio_id, c.plantilla_recordatorio));
+  }
+  if (negocios) {
+    negocios.forEach((n) => {
+      if (n.plantilla_recordatorio) configMap.set(n.id, n.plantilla_recordatorio);
+    });
   }
 
   const defaultPlantilla =

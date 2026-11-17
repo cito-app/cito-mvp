@@ -30,8 +30,9 @@ El token va en el header `x-admin-token` o como `?token=...`.
 
 | Variable | Obligatoria | Descripción |
 |---|---|---|
-| `SUPABASE_URL` | sí | URL del proyecto (`pbdprwul…`) |
-| `SUPABASE_KEY` | sí | Llave de Supabase |
+| `SUPABASE_URL` | sí | `https://gyfximoxybmkszltzdoj.supabase.co` (proyecto cito-production) |
+| `SUPABASE_KEY` | sí | **Secret key** (`sb_secret_…`, Settings → API Keys). Con RLS activo, la publishable no tiene acceso |
+| `NEGOCIO_ID` | no | Negocio al que se asignan las citas del bot (default `1`) |
 | `ADMIN_TOKEN` | recomendada | Si falta, el QR y los recordatorios quedan sin protección |
 | `ADMIN_NUMBER` | no | Número que recibe la confirmación al conectar |
 | `NODE_OPTIONS` | recomendada en Render | `--max-old-space-size=160` (deja RAM a Chromium) |

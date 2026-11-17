@@ -50,6 +50,8 @@ const supabase = createClient(normalizeSupabaseUrl(SUPABASE_URL), SUPABASE_KEY);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_NUMBER = process.env.ADMIN_NUMBER;
+// Negocio al que pertenecen las citas que entran por este número de WhatsApp.
+const NEGOCIO_ID = Number(process.env.NEGOCIO_ID || 1);
 
 const SUCCESS_MESSAGE =
   '¡Conexión exitosa! 🚀 El motor de Cito.mx está vivo, conectado a Supabase y listo para agendar. ¡Reserva confirmada!';
@@ -471,7 +473,10 @@ function isWithinBusinessHours(militaryTime, openTime, closeTime) {
 }
 
 async function getBusinessHours() {
-  const { data, error } = await supabase.from('configuracion_negocio').select('*');
+  const { data, error } = await supabase
+    .from('configuracion_negocio')
+    .select('*')
+    .eq('negocio_id', NEGOCIO_ID);
 
   if (error) {
     console.warn(
@@ -511,7 +516,8 @@ async function agendarCitaConControlDeCupo({ servicioNombre, clienteNombre, clie
 
     const { data: serviciosData, error: errServicio } = await supabase
       .from('servicios')
-      .select('id, capacidad_maxima, nombre');
+      .select('id, capacidad_maxima, nombre')
+      .eq('negocio_id', NEGOCIO_ID);
 
     let capacidadMaxima = 1;
     let servicioId = null;
@@ -530,6 +536,7 @@ async function agendarCitaConControlDeCupo({ servicioNombre, clienteNombre, clie
     const { data: citasExistentes, error: errCitas } = await supabase
       .from('citas')
       .select('id, fecha_hora')
+      .eq('negocio_id', NEGOCIO_ID)
       .in('estado', ['pendiente', 'confirmada']);
 
     if (errCitas) {
@@ -560,6 +567,7 @@ async function agendarCitaConControlDeCupo({ servicioNombre, clienteNombre, clie
     }
 
     const { error: errInsert } = await supabase.from('citas').insert({
+      negocio_id: NEGOCIO_ID,
       cliente_nombre: clienteNombre,
       cliente_telefono: clienteTelefono,
       servicio: servicioNombre,
