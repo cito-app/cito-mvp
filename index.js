@@ -594,6 +594,11 @@ whatsappClient.on('message', async (msg) => {
     return;
   }
 
+  // Ignorar historias (estados) y grupos: no son clientes agendando.
+  if (msg.isStatus || msg.from === 'status@broadcast' || msg.from.endsWith('@g.us')) {
+    return;
+  }
+
   const userId = msg.from;
   const messageText = msg.body?.trim() || '';
 
